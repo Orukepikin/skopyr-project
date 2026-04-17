@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { colors, fonts, Category } from '@/lib/constants';
+import { colors, fonts, SelectedCategory } from '@/lib/constants';
 import Button from './Button';
 
 interface Props {
-  category: Category;
+  category: SelectedCategory;
   onSubmit: () => void;
   onBack: () => void;
 }
@@ -56,7 +56,7 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
           background: 'none', border: 'none', color: colors.text3,
           fontFamily: fonts.body, fontSize: 13, cursor: 'pointer',
           padding: 0, marginBottom: 40, fontWeight: 500,
-        }}>← Back</button>
+        }}>{'\u2190'} Back</button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <span style={{ fontSize: 24 }}>{category.icon}</span>
@@ -64,7 +64,7 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
             fontSize: 11, fontFamily: fonts.body, fontWeight: 700,
             color: colors.accent, letterSpacing: 3,
             textTransform: 'uppercase' as const,
-          }}>Step 2 / 3 · {category.name}</span>
+          }}>{`Step 2 / 3 \u00B7 ${category.name}`}</span>
         </div>
 
         <h2 style={{
@@ -104,7 +104,7 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Min budget (₦)</label>
+              <label style={labelStyle}>Min budget ({'\u20A6'})</label>
               <input
                 style={inputStyle('bmin')}
                 placeholder="10,000"
@@ -113,7 +113,7 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
               />
             </div>
             <div>
-              <label style={labelStyle}>Max budget (₦)</label>
+              <label style={labelStyle}>Max budget ({'\u20A6'})</label>
               <input
                 style={inputStyle('bmax')}
                 placeholder="25,000"
@@ -154,11 +154,11 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
           </div>
 
           <div style={{ marginTop: 12 }}>
-            <Button full onClick={onSubmit}>Post request → Get bids</Button>
+            <Button full onClick={onSubmit}>Post request {'\u2192'} Get bids</Button>
             <p style={{
               fontSize: 11, fontFamily: fonts.body, color: colors.text3,
               textAlign: 'center' as const, marginTop: 14,
-            }}>🔒 Payment protected by Paystack escrow</p>
+            }}>{'\uD83D\uDD12'} Payment protected by Paystack escrow</p>
           </div>
         </div>
       </div>

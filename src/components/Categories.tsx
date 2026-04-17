@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { colors, fonts, categories, Category } from '@/lib/constants';
+import { colors, fonts, categories, SelectedCategory } from '@/lib/constants';
 
 interface Props {
-  onSelect: (cat: Category | { id: string; name: string; icon: string; tag: null }) => void;
+  onSelect: (cat: SelectedCategory) => void;
   onBack: () => void;
 }
 
@@ -248,3 +248,4 @@ export default function Categories({ onSelect, onBack }: Props) {
     </div>
   );
 }
+

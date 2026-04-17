@@ -117,7 +117,7 @@ export default function BidsView({ onBack, onHome }: Props) {
                 opacity: selected === bid.id ? 1 : 0,
               }}>
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
-                  <p style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.6, margin: '0 0 14px', fontStyle: 'italic' }}>"{bid.msg}"</p>
+                  <p style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.6, margin: '0 0 14px', fontStyle: 'italic' }}>{`\u201C${bid.msg}\u201D`}</p>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Button size="sm" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setShowModal(true); }}>Accept this bid</Button>
                     <Button variant="ghost" size="sm" onClick={(e: React.MouseEvent) => e.stopPropagation()}>Message</Button>

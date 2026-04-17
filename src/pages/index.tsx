@@ -6,20 +6,20 @@ import Categories from '@/components/Categories';
 import RequestForm from '@/components/RequestForm';
 import BidsView from '@/components/BidsView';
 import BrowseJobs from '@/components/BrowseJobs';
-import { Category } from '@/lib/constants';
+import { SelectedCategory } from '@/lib/constants';
 
 type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse';
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>('splash');
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<SelectedCategory | null>(null);
 
   const navigate = (s: Screen) => setScreen(s);
 
   return (
     <>
       <Head>
-        <title>Skopyr — Scope the best. Pick the best.</title>
+        <title>{'Skopyr \u2014 Scope the best. Pick the best.'}</title>
       </Head>
 
       {screen === 'splash' && <Splash onComplete={() => navigate('home')} />}
