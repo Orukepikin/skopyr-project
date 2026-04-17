@@ -1,5 +1,6 @@
 import Head from 'next/head';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import Splash from '@/components/Splash';
 import Hero from '@/components/Hero';
 import Categories from '@/components/Categories';
@@ -11,10 +12,24 @@ import { SelectedCategory } from '@/lib/constants';
 type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse';
 
 export default function Home() {
+  const { status } = useSession();
   const [screen, setScreen] = useState<Screen>('splash');
   const [selectedCategory, setSelectedCategory] = useState<SelectedCategory | null>(null);
 
   const navigate = (s: Screen) => setScreen(s);
+
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      return;
+    }
+
+    const returnScreen = window.localStorage.getItem('skopyr:return-screen');
+
+    if (returnScreen === 'bids') {
+      navigate('bids');
+      window.localStorage.removeItem('skopyr:return-screen');
+    }
+  }, [status]);
 
   return (
     <>

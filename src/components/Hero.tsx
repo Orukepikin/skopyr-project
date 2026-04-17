@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef, ReactNode } from 'react';
+import { useCallback, useEffect, useState, useRef, ReactNode } from 'react';
 import { colors, fonts, categories } from '@/lib/constants';
 import Button from './Button';
+import AuthControls from './AuthControls';
 
 interface Props {
   onPost: () => void;
@@ -38,6 +39,7 @@ function Reveal({ children, delay = 0, className = '' }: { children: ReactNode; 
 function useCount(target: number, dur = 2000): [number, () => void] {
   const [v, setV] = useState(0);
   const [go, setGo] = useState(false);
+  const start = useCallback(() => setGo(true), []);
   useEffect(() => {
     if (!go) return;
     let start: number | null = null;
@@ -50,7 +52,7 @@ function useCount(target: number, dur = 2000): [number, () => void] {
     };
     requestAnimationFrame(step);
   }, [go, target, dur]);
-  return [v, () => setGo(true)];
+  return [v, start];
 }
 
 /* ── How it works step ── */
@@ -84,7 +86,7 @@ export default function Hero({ onPost, onBrowse }: Props) {
   useEffect(() => {
     setTimeout(() => setV(true), 100);
     setTimeout(() => { goU(); goPr(); goJ(); }, 1000);
-  }, []);
+  }, [goJ, goPr, goU]);
 
   return (
     <div>
@@ -121,11 +123,7 @@ export default function Hero({ onPost, onBrowse }: Props) {
           }}>
             SK<span style={{ color: colors.accent }}>O</span>PYR
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="ghost" size="sm" onClick={onBrowse}>Browse jobs</Button>
-            <Button variant="outline" size="sm">Sign in</Button>
-            <Button size="sm">Join as provider</Button>
-          </div>
+          <AuthControls onBrowse={onBrowse} />
         </nav>
 
         {/* Hero content */}
