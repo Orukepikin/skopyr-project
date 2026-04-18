@@ -267,6 +267,31 @@ export const SPONSORED_AD_PLANS: SponsoredAdPlan[] = [
   },
 ];
 
+const SPONSORED_AD_PLAN_CAPS: Partial<
+  Record<SponsoredAdPlanId, Pick<SponsoredAdPlan, 'budgetLabel' | 'priceKobo'>>
+> = {
+  starter_week: {
+    budgetLabel: 'Starter Week - NGN 5k',
+    priceKobo: 500_000,
+  },
+  spotlight_fortnight: {
+    budgetLabel: 'Spotlight 14 Days - NGN 9k',
+    priceKobo: 900_000,
+  },
+  citywide_month: {
+    budgetLabel: 'Citywide 30 Days - NGN 15k',
+    priceKobo: 1_500_000,
+  },
+};
+
+for (const plan of SPONSORED_AD_PLANS) {
+  const cappedPlan = SPONSORED_AD_PLAN_CAPS[plan.id];
+
+  if (cappedPlan) {
+    Object.assign(plan, cappedPlan);
+  }
+}
+
 const DEFAULT_PROVIDER_BALANCE: ProviderBalance = {
   available: 'NGN 0',
   pending: 'NGN 0',
@@ -876,8 +901,15 @@ export function getSponsoredAdPlanFromBudgetLabel(label?: string | null) {
     return LEGACY_SPONSORED_AD_PLAN;
   }
 
+  const normalizedLabel = label.toLowerCase();
+
   return (
-    SPONSORED_AD_PLANS.find((plan) => plan.budgetLabel === label || plan.name === label) ||
+    SPONSORED_AD_PLANS.find(
+      (plan) =>
+        plan.budgetLabel === label ||
+        plan.name === label ||
+        normalizedLabel.includes(plan.name.toLowerCase()),
+    ) ||
     LEGACY_SPONSORED_AD_PLAN
   );
 }

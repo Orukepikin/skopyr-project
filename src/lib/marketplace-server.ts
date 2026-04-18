@@ -330,7 +330,7 @@ function mapSponsoredAd(row: SponsoredAdRow, profile: ProfileRow | undefined): S
     startingPrice: row.starting_price,
     cta: 'Message sponsor',
     badge: row.badge,
-    budget: row.budget,
+    budget: plan.budgetLabel,
     active: lifecycle.active,
     paymentStatus: lifecycle.paymentStatus,
     createdAt: row.created_at,
