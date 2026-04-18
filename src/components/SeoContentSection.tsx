@@ -1,17 +1,17 @@
+import Link from 'next/link';
 import { colors, fonts } from '@/lib/constants';
+import { seoServicePages } from '@/lib/seoServicePages';
 
 const searchTopics = [
-  {
-    title: 'Generator repair in Abuja',
-    body: 'Buyers can post urgent power issues in Games Village, Wuse, Gwarinpa, and Maitama, then compare fast replies from verified generator specialists.',
-  },
-  {
-    title: 'Plumbers and AC repair experts',
-    body: 'Skopyr helps people find plumbers, AC technicians, solar installers, and cleaners while giving providers a clearer path to quality leads.',
-  },
+  ...seoServicePages.slice(0, 6).map((page) => ({
+    title: page.cardTitle,
+    body: page.cardBody,
+    href: page.path,
+  })),
   {
     title: 'Sponsored provider visibility',
     body: 'Providers can pay for sponsored placements so their services appear above the fold, stand out in discovery, and attract more direct messages.',
+    href: '/pricing',
   },
 ];
 
@@ -91,13 +91,16 @@ export default function SeoContentSection() {
           }}
         >
           {searchTopics.map((topic) => (
-            <article
+            <Link
               key={topic.title}
+              href={topic.href}
               style={{
+                display: 'block',
                 background: '#FFFFFF',
                 border: `1px solid ${colors.borderLight}`,
                 borderRadius: 18,
                 padding: '28px 24px',
+                textDecoration: 'none',
               }}
             >
               <h3
@@ -119,10 +122,22 @@ export default function SeoContentSection() {
                   lineHeight: 1.7,
                   margin: 0,
                 }}
-              >
-                {topic.body}
-              </p>
-            </article>
+                >
+                  {topic.body}
+                </p>
+                <div
+                  style={{
+                    marginTop: 14,
+                    fontSize: 13,
+                    fontFamily: fonts.body,
+                    fontWeight: 700,
+                    color: colors.accent,
+                    letterSpacing: '0.2px',
+                  }}
+                >
+                  Open page -&gt;
+                </div>
+            </Link>
           ))}
         </div>
 

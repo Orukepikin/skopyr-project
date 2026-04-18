@@ -1,4 +1,5 @@
 import type { GetServerSideProps } from 'next';
+import { seoServicePages } from '@/lib/seoServicePages';
 
 const siteUrl = 'https://www.skopyr.com';
 
@@ -34,6 +35,11 @@ function createSitemap() {
       changefreq: 'weekly',
       priority: '0.8',
     },
+    ...seoServicePages.map((page) => ({
+      loc: `${siteUrl}${page.path}`,
+      changefreq: 'weekly',
+      priority: '0.8',
+    })),
   ];
 
   return `<?xml version="1.0" encoding="UTF-8"?>

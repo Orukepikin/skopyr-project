@@ -32,6 +32,7 @@ interface Props {
   faqs?: FaqItem[];
   primaryCta?: LinkItem;
   secondaryCta?: LinkItem;
+  relatedLinks?: LinkItem[];
 }
 
 const footerLinks: LinkItem[] = [
@@ -54,6 +55,7 @@ export default function SeoLandingPage({
   faqs = [],
   primaryCta,
   secondaryCta,
+  relatedLinks = [],
 }: Props) {
   const canonicalUrl = `${siteUrl}${path}`;
   const structuredData = {
@@ -332,7 +334,7 @@ export default function SeoLandingPage({
                           lineHeight: 1.7,
                         }}
                       >
-                        • {bullet}
+                        - {bullet}
                       </div>
                     ))}
                   </div>
@@ -340,6 +342,52 @@ export default function SeoLandingPage({
               </section>
             ))}
           </div>
+
+          {relatedLinks.length > 0 && (
+            <div style={{ marginTop: 28 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontFamily: fonts.body,
+                  fontWeight: 700,
+                  color: colors.accent,
+                  letterSpacing: 2.2,
+                  textTransform: 'uppercase',
+                  marginBottom: 16,
+                }}
+              >
+                Explore More Abuja Services
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {relatedLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    style={{
+                      display: 'block',
+                      background: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 18,
+                      padding: '18px 20px',
+                      color: colors.text1,
+                      textDecoration: 'none',
+                      fontFamily: fonts.display,
+                      fontWeight: 700,
+                      letterSpacing: '-0.2px',
+                    }}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {faqs.length > 0 && (
             <div style={{ marginTop: 28 }}>
