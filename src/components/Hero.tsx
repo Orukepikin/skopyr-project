@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState, useRef, ReactNode } from 'react';
 import { colors, fonts, categories } from '@/lib/constants';
 import type { DashboardRole } from '@/lib/dashboard';
+import type { SponsoredAd } from '@/lib/marketplace';
 import Button from './Button';
 import AuthControls from './AuthControls';
+import SponsoredAdsRail from './SponsoredAdsRail';
+import SeoContentSection from './SeoContentSection';
 
 interface Props {
   onPost: () => void;
   onBrowse: () => void;
   onDashboard: (role: DashboardRole) => void;
+  sponsoredAds: SponsoredAd[];
+  onMessageSponsor: (ad: SponsoredAd) => void;
 }
 
 /* ── Scroll-triggered reveal ── */
@@ -79,7 +84,7 @@ function Step({ num, title, desc, delay }: { num: string; title: string; desc: s
   );
 }
 
-export default function Hero({ onPost, onBrowse, onDashboard }: Props) {
+export default function Hero({ onPost, onBrowse, onDashboard, sponsoredAds, onMessageSponsor }: Props) {
   const [v, setV] = useState(false);
   const [u, goU] = useCount(2847);
   const [pr, goPr] = useCount(412);
@@ -127,6 +132,10 @@ export default function Hero({ onPost, onBrowse, onDashboard }: Props) {
           </div>
           <AuthControls onBrowse={onBrowse} onDashboard={onDashboard} />
         </nav>
+
+        <div style={{ padding: '0 48px' }}>
+          <SponsoredAdsRail ads={sponsoredAds} onMessageSponsor={onMessageSponsor} />
+        </div>
 
         {/* Hero content */}
         <div style={{
@@ -370,6 +379,8 @@ export default function Hero({ onPost, onBrowse, onDashboard }: Props) {
           </div>
         </div>
       </div>
+
+      <SeoContentSection />
 
       {/* ═══════════════════════════════════════════ */}
       {/* SECTION 4 — Cream: Trust & Safety          */}

@@ -1,0 +1,19 @@
+# Skopyr
+
+Skopyr is a reverse marketplace for services in Abuja, Nigeria.
+
+## What users can do
+- Post service requests and compare provider bids
+- Message providers and requesters directly
+- Use Paystack-backed escrow for protected payments
+- Run sponsored ads so provider services appear in premium homepage placement
+
+## Focus services
+- Generator repair
+- Plumbing
+- AC repair
+- Cleaning
+- Solar and inverter support
+
+## Website
+- https://www.skopyr.com

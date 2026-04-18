@@ -7,6 +7,12 @@ import Button from './Button';
 interface Props {
   onBack: () => void;
   onHome: () => void;
+  onMessageProvider: (input: {
+    providerName: string;
+    category: string;
+    subject: string;
+    body: string;
+  }) => void;
 }
 
 type PaymentState = 'idle' | 'initializing' | 'verifying' | 'success' | 'error';
@@ -84,7 +90,7 @@ function formatNaira(amount: number) {
   }).format(amount);
 }
 
-export default function BidsView({ onBack, onHome }: Props) {
+export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
   const { data: session } = useSession();
   const [visible, setVisible] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
@@ -575,7 +581,15 @@ export default function BidsView({ onBack, onHome }: Props) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(event: React.MouseEvent) => event.stopPropagation()}
+                      onClick={(event: React.MouseEvent) => {
+                        event.stopPropagation();
+                        onMessageProvider({
+                          providerName: bid.name,
+                          category: 'Generator repair',
+                          subject: 'Generator not starting',
+                          body: `Hi ${bid.name.split(' ')[0]}, I want to ask a few questions about your bid before I accept it.`,
+                        });
+                      }}
                     >
                       Message
                     </Button>

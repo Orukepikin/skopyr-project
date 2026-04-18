@@ -1,41 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { colors, fonts } from '@/lib/constants';
-import type { DashboardRole } from '@/lib/dashboard';
+import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
+import type { AdDraft, MarketplaceThread, SponsoredAd } from '@/lib/marketplace';
 import Button from './Button';
 
 interface Props {
   role: DashboardRole;
   userName?: string | null;
   userEmail?: string | null;
+  customerThreads: MarketplaceThread[];
+  providerThreads: MarketplaceThread[];
+  sponsoredAds: SponsoredAd[];
+  initialDetail: DashboardDetail | null;
   onRoleChange: (role: DashboardRole) => void;
   onHome: () => void;
   onBrowse: () => void;
   onPost: () => void;
+  onSendMessage: (role: DashboardRole, threadId: string, body: string) => void;
+  onCreateAd: (draft: AdDraft) => void;
+  onToggleAd: (adId: string) => void;
+  onClearInitialDetail: () => void;
 }
 
 interface StatCard {
   label: string;
   value: string;
   note: string;
-}
-
-interface ConversationEntry {
-  id: number;
-  sender: string;
-  body: string;
-  time: string;
-  direction: 'incoming' | 'outgoing' | 'system';
-}
-
-interface MessageThread {
-  id: number;
-  counterpart: string;
-  preview: string;
-  time: string;
-  unread: boolean;
-  category: string;
-  conversation: ConversationEntry[];
 }
 
 interface CustomerRequest {
@@ -76,162 +67,6 @@ interface Payout {
   date: string;
   details: string[];
 }
-
-type DetailState =
-  | { kind: 'message'; id: number }
-  | { kind: 'request'; id: number }
-  | { kind: 'lead'; id: number }
-  | { kind: 'escrow'; id: number }
-  | { kind: 'payout'; id: number }
-  | { kind: 'balance' };
-
-const CUSTOMER_STATS: StatCard[] = [
-  { label: 'Live requests', value: '3', note: '2 already have shortlisted providers' },
-  { label: 'Unread messages', value: '5', note: 'Fast replies improve your booking speed' },
-  { label: 'Escrow protected', value: 'NGN 58k', note: 'Held safely until work is confirmed' },
-];
-
-const PROVIDER_STATS: StatCard[] = [
-  { label: 'New leads', value: '12', note: 'People currently looking for your services' },
-  { label: 'Earnings this month', value: 'NGN 184k', note: 'NGN 42k pending release' },
-  { label: 'Response rate', value: '96%', note: 'Top providers in Abuja answer within 10 mins' },
-];
-
-const CUSTOMER_MESSAGES: MessageThread[] = [
-  {
-    id: 1,
-    counterpart: 'Amaka Eze',
-    preview: 'I can be at Games Village by 3:30 PM. Do you want me to bring replacement plugs too?',
-    time: '4m ago',
-    unread: true,
-    category: 'Generator repair',
-    conversation: [
-      {
-        id: 1,
-        sender: 'Amaka Eze',
-        body: 'Hi. I checked your generator notes and I can get to Games Village by 3:30 PM.',
-        time: '3:21 PM',
-        direction: 'incoming',
-      },
-      {
-        id: 2,
-        sender: 'Amaka Eze',
-        body: 'Do you want me to bring replacement plugs too? I can include them in the same visit.',
-        time: '3:23 PM',
-        direction: 'incoming',
-      },
-    ],
-  },
-  {
-    id: 2,
-    counterpart: 'Chidi Okonkwo',
-    preview: 'I just sent a revised quote that includes diagnostics and fuel system checks.',
-    time: '19m ago',
-    unread: true,
-    category: 'Generator repair',
-    conversation: [
-      {
-        id: 1,
-        sender: 'You',
-        body: 'Can you confirm if your quote includes diagnostics?',
-        time: '2:58 PM',
-        direction: 'outgoing',
-      },
-      {
-        id: 2,
-        sender: 'Chidi Okonkwo',
-        body: 'Yes. I just sent a revised quote that includes diagnostics and fuel system checks.',
-        time: '3:08 PM',
-        direction: 'incoming',
-      },
-    ],
-  },
-  {
-    id: 3,
-    counterpart: 'Skopyr support',
-    preview: 'Your payment for the AC repair job is still protected in escrow until you confirm completion.',
-    time: 'Yesterday',
-    unread: false,
-    category: 'Escrow update',
-    conversation: [
-      {
-        id: 1,
-        sender: 'Skopyr support',
-        body: 'Your payment for the AC repair job is still protected in escrow until you confirm completion.',
-        time: 'Yesterday',
-        direction: 'system',
-      },
-      {
-        id: 2,
-        sender: 'Skopyr support',
-        body: 'Once you mark the work complete, the provider payout starts automatically.',
-        time: 'Yesterday',
-        direction: 'system',
-      },
-    ],
-  },
-];
-
-const PROVIDER_MESSAGES: MessageThread[] = [
-  {
-    id: 1,
-    counterpart: 'Aisha Bello',
-    preview: 'Can you still make it to Wuse today if I accept your bid this afternoon?',
-    time: '2m ago',
-    unread: true,
-    category: 'Generator repair',
-    conversation: [
-      {
-        id: 1,
-        sender: 'Aisha Bello',
-        body: 'Can you still make it to Wuse today if I accept your bid this afternoon?',
-        time: '4:10 PM',
-        direction: 'incoming',
-      },
-    ],
-  },
-  {
-    id: 2,
-    counterpart: 'David Ogunleye',
-    preview: 'I like your profile. Are you available for a same-day solar inverter inspection?',
-    time: '13m ago',
-    unread: true,
-    category: 'Solar and inverter',
-    conversation: [
-      {
-        id: 1,
-        sender: 'David Ogunleye',
-        body: 'I like your profile. Are you available for a same-day solar inverter inspection?',
-        time: '3:57 PM',
-        direction: 'incoming',
-      },
-    ],
-  },
-  {
-    id: 3,
-    counterpart: 'Skopyr payouts',
-    preview: 'NGN 36,000 from the Maitama deep clean job has been released to your payout balance.',
-    time: 'Today',
-    unread: false,
-    category: 'Earnings',
-    conversation: [
-      {
-        id: 1,
-        sender: 'Skopyr payouts',
-        body: 'NGN 36,000 from the Maitama deep clean job has been released to your payout balance.',
-        time: '11:45 AM',
-        direction: 'system',
-      },
-      {
-        id: 2,
-        sender: 'Skopyr payouts',
-        body: 'It will move to your bank in the next payout window.',
-        time: '11:46 AM',
-        direction: 'system',
-      },
-    ],
-  },
-];
 
 const CUSTOMER_REQUESTS: CustomerRequest[] = [
   {
@@ -448,16 +283,33 @@ export default function ProfileDashboard({
   role,
   userName,
   userEmail,
+  customerThreads,
+  providerThreads,
+  sponsoredAds,
+  initialDetail,
   onRoleChange,
   onHome,
   onBrowse,
   onPost,
+  onSendMessage,
+  onCreateAd,
+  onToggleAd,
+  onClearInitialDetail,
 }: Props) {
   const [visible, setVisible] = useState(false);
-  const [customerThreads, setCustomerThreads] = useState(CUSTOMER_MESSAGES);
-  const [providerThreads, setProviderThreads] = useState(PROVIDER_MESSAGES);
-  const [activeDetail, setActiveDetail] = useState<DetailState | null>(null);
+  const [activeDetail, setActiveDetail] = useState<DashboardDetail | null>(initialDetail);
   const [draftReply, setDraftReply] = useState('');
+  const [adDraft, setAdDraft] = useState<AdDraft>({
+    service: '',
+    headline: '',
+    body: '',
+    location: 'Abuja',
+    startingPrice: 'From NGN 15k',
+    budget: 'NGN 10k / week',
+    badge: 'Sponsored',
+  });
+
+  const messageThreads = role === 'provider' ? providerThreads : customerThreads;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setVisible(true), 50);
@@ -466,78 +318,42 @@ export default function ProfileDashboard({
 
   useEffect(() => {
     setDraftReply('');
-    setActiveDetail(null);
-  }, [role]);
+    setActiveDetail(initialDetail);
+  }, [initialDetail, role]);
 
-  const stats = role === 'provider' ? PROVIDER_STATS : CUSTOMER_STATS;
-  const messageThreads = role === 'provider' ? providerThreads : customerThreads;
-  const quickAction = role === 'provider'
-    ? { label: 'Browse live requests', onClick: onBrowse }
-    : { label: 'Post a new request', onClick: onPost };
+  const stats = useMemo<StatCard[]>(() => {
+    if (role === 'provider') {
+      return [
+        { label: 'New leads', value: `${PROVIDER_LEADS.length}`, note: 'People currently looking for your services' },
+        { label: 'Earnings this month', value: 'NGN 184k', note: 'NGN 42k pending release' },
+        {
+          label: 'Active ads',
+          value: `${sponsoredAds.filter((ad) => ad.active).length}`,
+          note: 'Promoted services showing above the fold on home',
+        },
+      ];
+    }
+
+    return [
+      { label: 'Live requests', value: `${CUSTOMER_REQUESTS.length}`, note: '2 already have shortlisted providers' },
+      {
+        label: 'Unread messages',
+        value: `${messageThreads.filter((thread) => thread.unread).length}`,
+        note: 'Fast replies improve your booking speed',
+      },
+      {
+        label: 'Escrow protected',
+        value: 'NGN 58k',
+        note: 'Held safely until work is confirmed',
+      },
+    ];
+  }, [messageThreads, role, sponsoredAds]);
 
   const headline = useMemo(() => {
     return role === 'provider'
-      ? 'Track leads, reply faster, and stay on top of your earnings.'
+      ? 'Track leads, run sponsored ads, reply faster, and stay on top of your earnings.'
       : 'Keep every request, message, and escrow payment in one place.';
   }, [role]);
-
-  const updateThreadsForRole = (updater: (threads: MessageThread[]) => MessageThread[]) => {
-    if (role === 'provider') {
-      setProviderThreads((threads) => updater(threads));
-      return;
-    }
-
-    setCustomerThreads((threads) => updater(threads));
-  };
-
-  const openMessage = (id: number) => {
-    updateThreadsForRole((threads) =>
-      threads.map((thread) => (thread.id === id ? { ...thread, unread: false } : thread))
-    );
-    setActiveDetail({ kind: 'message', id });
-    setDraftReply('');
-  };
-
-  const closeDetail = () => {
-    setActiveDetail(null);
-    setDraftReply('');
-  };
-
-  const handleSendReply = () => {
-    if (activeDetail?.kind !== 'message' || !draftReply.trim()) {
-      return;
-    }
-
-    const body = draftReply.trim();
-    const sender = userName || 'You';
-
-    updateThreadsForRole((threads) =>
-      threads.map((thread) => {
-        if (thread.id !== activeDetail.id) {
-          return thread;
-        }
-
-        return {
-          ...thread,
-          unread: false,
-          time: 'Just now',
-          preview: body,
-          conversation: [
-            ...thread.conversation,
-            {
-              id: thread.conversation.length + 1,
-              sender,
-              body,
-              time: 'Just now',
-              direction: 'outgoing',
-            },
-          ],
-        };
-      })
-    );
-
-    setDraftReply('');
-  };
 
   const activeMessage = activeDetail?.kind === 'message'
     ? messageThreads.find((thread) => thread.id === activeDetail.id) ?? null
@@ -549,47 +365,42 @@ export default function ProfileDashboard({
     ? PROVIDER_LEADS.find((lead) => lead.id === activeDetail.id) ?? null
     : null;
   const activeEscrow = activeDetail?.kind === 'escrow'
-    ? CUSTOMER_ESCROWS.find((escrow) => escrow.id === activeDetail.id) ?? null
+    ? CUSTOMER_ESCROWS.find((item) => item.id === activeDetail.id) ?? null
     : null;
   const activePayout = activeDetail?.kind === 'payout'
-    ? PAYOUTS.find((payout) => payout.id === activeDetail.id) ?? null
+    ? PAYOUTS.find((item) => item.id === activeDetail.id) ?? null
     : null;
 
-  const openMatchingMessage = (counterpart: string) => {
-    const matchingThread = messageThreads.find((thread) => thread.counterpart === counterpart);
-
-    if (matchingThread) {
-      openMessage(matchingThread.id);
-    }
+  const closeDetail = () => {
+    setActiveDetail(null);
+    setDraftReply('');
+    onClearInitialDetail();
   };
 
-  const openStatDetail = (label: string) => {
-    if (role === 'provider') {
-      if (label === 'New leads') {
-        setActiveDetail({ kind: 'lead', id: PROVIDER_LEADS[0].id });
-        return;
-      }
-
-      if (label === 'Earnings this month') {
-        setActiveDetail({ kind: 'balance' });
-        return;
-      }
-
-      setActiveDetail({ kind: 'message', id: messageThreads[0].id });
+  const handleReply = () => {
+    if (activeDetail?.kind !== 'message' || !draftReply.trim()) {
       return;
     }
 
-    if (label === 'Live requests') {
-      setActiveDetail({ kind: 'request', id: CUSTOMER_REQUESTS[0].id });
+    onSendMessage(role, activeDetail.id, draftReply.trim());
+    setDraftReply('');
+  };
+
+  const handleCreateAd = () => {
+    if (!adDraft.service || !adDraft.headline || !adDraft.body) {
       return;
     }
 
-    if (label === 'Unread messages') {
-      setActiveDetail({ kind: 'message', id: messageThreads[0].id });
-      return;
-    }
-
-    setActiveDetail({ kind: 'escrow', id: CUSTOMER_ESCROWS[0].id });
+    onCreateAd(adDraft);
+    setAdDraft({
+      service: '',
+      headline: '',
+      body: '',
+      location: 'Abuja',
+      startingPrice: 'From NGN 15k',
+      budget: 'NGN 10k / week',
+      badge: 'Sponsored',
+    });
   };
 
   return (
@@ -701,7 +512,7 @@ export default function ProfileDashboard({
                     fontSize: 14,
                     fontFamily: fonts.body,
                     color: colors.text2,
-                    maxWidth: 540,
+                    maxWidth: 580,
                     lineHeight: 1.7,
                   }}
                 >
@@ -765,8 +576,8 @@ export default function ProfileDashboard({
                 </button>
               </div>
 
-              <Button size="sm" onClick={quickAction.onClick}>
-                {quickAction.label}
+              <Button size="sm" onClick={role === 'provider' ? onBrowse : onPost}>
+                {role === 'provider' ? 'Browse live requests' : 'Post a new request'}
               </Button>
             </div>
           </div>
@@ -784,7 +595,35 @@ export default function ProfileDashboard({
             <button
               key={item.label}
               type="button"
-              onClick={() => openStatDetail(item.label)}
+              onClick={() => {
+                if (role === 'provider' && item.label === 'New leads') {
+                  setActiveDetail({ kind: 'lead', id: PROVIDER_LEADS[0].id });
+                  return;
+                }
+
+                if (role === 'provider' && item.label === 'Earnings this month') {
+                  setActiveDetail({ kind: 'balance' });
+                  return;
+                }
+
+                if (role === 'provider' && item.label === 'Active ads') {
+                  return;
+                }
+
+                if (role === 'customer' && item.label === 'Live requests') {
+                  setActiveDetail({ kind: 'request', id: CUSTOMER_REQUESTS[0].id });
+                  return;
+                }
+
+                if (role === 'customer' && item.label === 'Escrow protected') {
+                  setActiveDetail({ kind: 'escrow', id: CUSTOMER_ESCROWS[0].id });
+                  return;
+                }
+
+                if (messageThreads[0]) {
+                  setActiveDetail({ kind: 'message', id: messageThreads[0].id });
+                }
+              }}
               style={{
                 background: colors.card,
                 border: `1px solid ${colors.border}`,
@@ -828,17 +667,6 @@ export default function ProfileDashboard({
               >
                 {item.note}
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontFamily: fonts.body,
-                  color: colors.accent,
-                  fontWeight: 700,
-                  marginTop: 12,
-                }}
-              >
-                {'Open details ->'}
-              </div>
             </button>
           ))}
         </div>
@@ -873,7 +701,7 @@ export default function ProfileDashboard({
                           justifyContent: 'space-between',
                           gap: 12,
                           flexWrap: 'wrap',
-                          marginBottom: 12,
+                          marginBottom: 10,
                         }}
                       >
                         <div>
@@ -909,31 +737,8 @@ export default function ProfileDashboard({
                           {lead.urgency}
                         </div>
                       </div>
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 10,
-                          fontSize: 12,
-                          fontFamily: fonts.body,
-                          color: colors.text2,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <span>{lead.budget}</span>
-                        <span>Interest: {lead.interest}</span>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontFamily: fonts.body,
-                          color: colors.success,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {'Open lead details ->'}
+                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.6 }}>
+                        {lead.budget} · {lead.interest}
                       </div>
                     </button>
                   ))
@@ -964,53 +769,16 @@ export default function ProfileDashboard({
                           >
                             {request.title}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontFamily: fonts.body,
-                              color: colors.text3,
-                              marginTop: 4,
-                            }}
-                          >
+                          <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
                             {request.location} | {request.budget}
                           </div>
                         </div>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontFamily: fonts.body,
-                            color: colors.accent,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.accent, fontWeight: 700 }}>
                           {request.status}
                         </div>
                       </div>
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 12,
-                          fontSize: 12,
-                          fontFamily: fonts.body,
-                          color: colors.text2,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <span>{request.bids} bids</span>
-                        <span>{request.provider}</span>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontFamily: fonts.body,
-                          color: colors.success,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {'Open request details ->'}
+                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.6 }}>
+                        {request.bids} bids · {request.provider}
                       </div>
                     </button>
                   ))}
@@ -1022,76 +790,50 @@ export default function ProfileDashboard({
             subtitle="Open a thread, read the conversation, and send a quick reply"
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {messageThreads.map((message) => (
+              {messageThreads.map((thread) => (
                 <button
-                  key={message.id}
+                  key={thread.id}
                   type="button"
-                  onClick={() => openMessage(message.id)}
-                  style={getClickableCardStyle(activeDetail?.kind === 'message' && activeDetail.id === message.id)}
+                  onClick={() => setActiveDetail({ kind: 'message', id: thread.id })}
+                  style={getClickableCardStyle(activeDetail?.kind === 'message' && activeDetail.id === thread.id)}
                 >
                   <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'center',
                       gap: 12,
+                      flexWrap: 'wrap',
                       marginBottom: 8,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
-                      {message.counterpart}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontFamily: fonts.display,
+                          fontWeight: 700,
+                          color: colors.text1,
+                        }}
+                      >
+                        {thread.counterpart}
+                      </div>
+                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
+                        {thread.subject} · {thread.category}
+                      </div>
                     </div>
                     <div
                       style={{
                         fontSize: 11,
                         fontFamily: fonts.body,
-                        color: message.unread ? colors.accent : colors.text3,
+                        color: thread.unread ? colors.accent : colors.text3,
                         fontWeight: 700,
                       }}
                     >
-                      {message.unread ? 'Unread' : message.time}
+                      {thread.unread ? 'Unread' : thread.time}
                     </div>
                   </div>
-
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontFamily: fonts.body,
-                      color: colors.text3,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {message.category}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontFamily: fonts.body,
-                      color: colors.text2,
-                      lineHeight: 1.6,
-                      marginBottom: 10,
-                    }}
-                  >
-                    {message.preview}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontFamily: fonts.body,
-                      color: colors.success,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {'Open thread ->'}
+                  <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7 }}>
+                    {thread.preview}
                   </div>
                 </button>
               ))}
@@ -1101,7 +843,7 @@ export default function ProfileDashboard({
           {role === 'provider' ? (
             <Panel
               title="Earnings tracker"
-              subtitle="Open balances and payouts to inspect release status"
+              subtitle="See what is released, what is pending, and what is on the way"
             >
               <button
                 type="button"
@@ -1136,25 +878,8 @@ export default function ProfileDashboard({
                 >
                   {PROVIDER_BALANCE.available}
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontFamily: fonts.body,
-                    color: colors.text2,
-                    marginBottom: 10,
-                  }}
-                >
+                <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2 }}>
                   Next release window: {PROVIDER_BALANCE.nextWindow}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontFamily: fonts.body,
-                    color: colors.success,
-                    fontWeight: 700,
-                  }}
-                >
-                  {'Open payout balance ->'}
                 </div>
               </button>
 
@@ -1164,49 +889,18 @@ export default function ProfileDashboard({
                     key={payout.id}
                     type="button"
                     onClick={() => setActiveDetail({ kind: 'payout', id: payout.id })}
-                    style={{
-                      ...getClickableCardStyle(activeDetail?.kind === 'payout' && activeDetail.id === payout.id),
-                      padding: '14px 16px',
-                    }}
+                    style={getClickableCardStyle(activeDetail?.kind === 'payout' && activeDetail.id === payout.id)}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                      }}
-                    >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                       <div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontFamily: fonts.body,
-                            fontWeight: 700,
-                            color: colors.text1,
-                          }}
-                        >
+                        <div style={{ fontSize: 14, fontFamily: fonts.body, fontWeight: 700, color: colors.text1 }}>
                           {payout.title}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontFamily: fonts.body,
-                            color: colors.text3,
-                            marginTop: 4,
-                          }}
-                        >
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
                           {payout.date} | {payout.status}
                         </div>
                       </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontFamily: fonts.body,
-                          color: colors.accent,
-                          fontWeight: 700,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
+                      <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.accent, fontWeight: 700 }}>
                         {payout.amount}
                       </div>
                     </div>
@@ -1233,7 +927,7 @@ export default function ProfileDashboard({
                         justifyContent: 'space-between',
                         gap: 12,
                         flexWrap: 'wrap',
-                        marginBottom: 10,
+                        marginBottom: 8,
                       }}
                     >
                       <div>
@@ -1247,47 +941,16 @@ export default function ProfileDashboard({
                         >
                           {escrow.title}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontFamily: fonts.body,
-                            color: colors.text3,
-                            marginTop: 4,
-                          }}
-                        >
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
                           {escrow.provider}
                         </div>
                       </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontFamily: fonts.body,
-                          color: colors.accent,
-                          fontWeight: 700,
-                        }}
-                      >
+                      <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.accent, fontWeight: 700 }}>
                         {escrow.amount}
                       </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontFamily: fonts.body,
-                        color: colors.text2,
-                        marginBottom: 10,
-                      }}
-                    >
+                    <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2 }}>
                       {escrow.status} | {escrow.updatedAt}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontFamily: fonts.body,
-                        color: colors.success,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {'Open escrow details ->'}
                     </div>
                   </button>
                 ))}
@@ -1295,6 +958,165 @@ export default function ProfileDashboard({
             </Panel>
           )}
         </div>
+
+        {role === 'provider' && (
+          <div style={{ marginTop: 22 }}>
+            <Panel
+              title="Sponsored ads"
+              subtitle="Run promoted campaigns so your service is one of the first things buyers see"
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(300px, 1.1fr) minmax(280px, 0.9fr)',
+                  gap: 20,
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {sponsoredAds.map((ad) => (
+                    <div
+                      key={ad.id}
+                      style={{
+                        background: ad.active ? 'rgba(255,107,43,0.08)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${ad.active ? colors.accentBorder : colors.border}`,
+                        borderRadius: 16,
+                        padding: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontFamily: fonts.display,
+                              fontWeight: 700,
+                              color: colors.text1,
+                            }}
+                          >
+                            {ad.headline}
+                          </div>
+                          <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
+                            {ad.service} · {ad.location}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.accent, fontWeight: 700 }}>
+                          {ad.budget}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7 }}>
+                        {ad.body}
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <Button size="sm" variant={ad.active ? 'outline' : 'primary'} onClick={() => onToggleAd(ad.id)}>
+                          {ad.active ? 'Pause ad' : 'Reactivate ad'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 18,
+                    padding: 18,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontFamily: fonts.body,
+                      fontWeight: 700,
+                      color: colors.accent,
+                      letterSpacing: 1.8,
+                      textTransform: 'uppercase',
+                      marginBottom: 12,
+                    }}
+                  >
+                    Launch a sponsored slot
+                  </div>
+
+                  {[
+                    { key: 'service', label: 'Service' },
+                    { key: 'headline', label: 'Headline' },
+                    { key: 'body', label: 'Ad copy', multiline: true },
+                    { key: 'location', label: 'Target area' },
+                    { key: 'startingPrice', label: 'Starting price' },
+                    { key: 'budget', label: 'Budget' },
+                  ].map((field) => (
+                    <div key={field.key} style={{ marginBottom: 12 }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: fonts.body,
+                          fontWeight: 700,
+                          color: colors.text3,
+                          letterSpacing: 1.6,
+                          textTransform: 'uppercase',
+                          marginBottom: 6,
+                        }}
+                      >
+                        {field.label}
+                      </div>
+                      {field.multiline ? (
+                        <textarea
+                          value={adDraft[field.key as keyof AdDraft] as string}
+                          onChange={(event) =>
+                            setAdDraft((current) => ({ ...current, [field.key]: event.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            minHeight: 90,
+                            background: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            color: colors.text1,
+                            fontSize: 14,
+                            fontFamily: fonts.body,
+                            resize: 'vertical',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      ) : (
+                        <input
+                          value={adDraft[field.key as keyof AdDraft] as string}
+                          onChange={(event) =>
+                            setAdDraft((current) => ({ ...current, [field.key]: event.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            background: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            color: colors.text1,
+                            fontSize: 14,
+                            fontFamily: fonts.body,
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  <Button full onClick={handleCreateAd}>
+                    Launch sponsored ad
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+          </div>
+        )}
 
         {activeDetail && (
           <div
@@ -1322,15 +1144,9 @@ export default function ProfileDashboard({
             >
               <Panel
                 title="Detail view"
-                subtitle="Click any message, request, lead, payout, or escrow item to inspect it here"
+                subtitle="Open messages, requests, ads, leads, or payouts and work from one place"
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    marginBottom: 18,
-                  }}
-                >
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
                   <button
                     type="button"
                     onClick={closeDetail}
@@ -1349,626 +1165,299 @@ export default function ProfileDashboard({
                     Close
                   </button>
                 </div>
-            {activeMessage && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 18,
-                  }}
-                >
+
+                {activeMessage && (
                   <div>
                     <div
                       style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        marginBottom: 18,
                       }}
                     >
-                      Conversation with {activeMessage.counterpart}
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 22,
+                            fontFamily: fonts.display,
+                            fontWeight: 700,
+                            color: colors.text1,
+                          }}
+                        >
+                          Conversation with {activeMessage.counterpart}
+                        </div>
+                        <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                          {activeMessage.subject} | {activeMessage.category}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3 }}>
+                        {activeMessage.time}
+                      </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
-                      }}
-                    >
-                      {activeMessage.category} | Last update {activeMessage.time}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => openMessage(activeMessage.id)}>
-                    Mark as viewed
-                  </Button>
-                </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-                  {activeMessage.conversation.map((entry) => (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                      {activeMessage.conversation.map((entry) => (
+                        <div
+                          key={entry.id}
+                          style={{
+                            alignSelf: entry.direction === 'outgoing' ? 'flex-end' : 'stretch',
+                            maxWidth: entry.direction === 'outgoing' ? '78%' : '100%',
+                            background:
+                              entry.direction === 'outgoing'
+                                ? colors.accentDim
+                                : entry.direction === 'system'
+                                  ? 'rgba(255,255,255,0.04)'
+                                  : 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${
+                              entry.direction === 'outgoing' ? colors.accentBorder : colors.border
+                            }`,
+                            borderRadius: 16,
+                            padding: 14,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: 10,
+                              marginBottom: 8,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontFamily: fonts.body,
+                                color: entry.direction === 'outgoing' ? colors.accent : colors.text2,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {entry.sender}
+                            </span>
+                            <span style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
+                              {entry.time}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text1, lineHeight: 1.7 }}>
+                            {entry.body}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
                     <div
-                      key={entry.id}
                       style={{
-                        alignSelf: entry.direction === 'outgoing' ? 'flex-end' : 'stretch',
-                        maxWidth: entry.direction === 'outgoing' ? '78%' : '100%',
-                        background:
-                          entry.direction === 'outgoing'
-                            ? colors.accentDim
-                            : entry.direction === 'system'
-                              ? 'rgba(255,255,255,0.04)'
-                              : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${
-                          entry.direction === 'outgoing'
-                            ? colors.accentBorder
-                            : entry.direction === 'system'
-                              ? colors.border
-                              : colors.border
-                        }`,
-                        borderRadius: 16,
-                        padding: 14,
+                        background: 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 18,
+                        padding: 16,
                       }}
                     >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontFamily: fonts.body,
+                          fontWeight: 700,
+                          color: colors.accent,
+                          letterSpacing: 1.6,
+                          textTransform: 'uppercase',
+                          marginBottom: 10,
+                        }}
+                      >
+                        Quick reply
+                      </div>
+                      <textarea
+                        value={draftReply}
+                        onChange={(event) => setDraftReply(event.target.value)}
+                        placeholder={`Reply to ${activeMessage.counterpart}...`}
+                        style={{
+                          width: '100%',
+                          minHeight: 96,
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 12,
+                          padding: '14px 16px',
+                          color: colors.text1,
+                          fontSize: 14,
+                          fontFamily: fonts.body,
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                        }}
+                      />
                       <div
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
-                          gap: 10,
-                          marginBottom: 8,
+                          gap: 12,
+                          alignItems: 'center',
+                          marginTop: 12,
                           flexWrap: 'wrap',
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontFamily: fonts.body,
-                            color: entry.direction === 'outgoing' ? colors.accent : colors.text2,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {entry.sender}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontFamily: fonts.body,
-                            color: colors.text3,
-                          }}
-                        >
-                          {entry.time}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontFamily: fonts.body,
-                          color: colors.text1,
-                          lineHeight: 1.7,
-                        }}
-                      >
-                        {entry.body}
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3 }}>
+                          Replies sync back into the buyer/provider inbox views.
+                        </div>
+                        <Button size="sm" onClick={handleReply} disabled={!draftReply.trim()}>
+                          Send reply
+                        </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-
-                <div
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 18,
-                    padding: 16,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontFamily: fonts.body,
-                      fontWeight: 700,
-                      color: colors.accent,
-                      letterSpacing: 1.6,
-                      textTransform: 'uppercase',
-                      marginBottom: 10,
-                    }}
-                  >
-                    Quick reply
                   </div>
-                  <textarea
-                    value={draftReply}
-                    onChange={(event) => setDraftReply(event.target.value)}
-                    placeholder={`Reply to ${activeMessage.counterpart}...`}
-                    style={{
-                      width: '100%',
-                      minHeight: 96,
-                      background: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 12,
-                      padding: '14px 16px',
-                      color: colors.text1,
-                      fontSize: 14,
-                      fontFamily: fonts.body,
-                      resize: 'vertical',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                      alignItems: 'center',
-                      marginTop: 12,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                      }}
-                    >
-                      This reply updates the in-app demo thread instantly.
-                    </div>
-                    <Button size="sm" onClick={handleSendReply} disabled={!draftReply.trim()}>
-                      Send reply
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {activeRequest && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 16,
-                  }}
-                >
+                {activeRequest && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
                       {activeRequest.title}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
-                      }}
-                    >
-                      {activeRequest.location} | {activeRequest.budget}
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      {activeRequest.location} | {activeRequest.budget} | {activeRequest.status}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginTop: 16 }}>
+                      {[
+                        `${activeRequest.bids} active bids are attached to this request.`,
+                        activeRequest.provider,
+                        activeRequest.status === 'Escrow active'
+                          ? 'Escrow is already protecting this booking until work is confirmed.'
+                          : 'You can keep comparing quotes or move straight into a provider conversation.',
+                      ].map((item) => (
+                        <div
+                          key={item}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 16,
+                            padding: 16,
+                            fontSize: 13,
+                            fontFamily: fonts.body,
+                            color: colors.text2,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {item}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontFamily: fonts.body,
-                      color: colors.accent,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {activeRequest.status}
-                  </div>
-                </div>
+                )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-                  {[
-                    `${activeRequest.bids} active bids are currently attached to this request.`,
-                    activeRequest.provider,
-                    activeRequest.status === 'Escrow active'
-                      ? 'Escrow is already protecting this booking until work is confirmed.'
-                      : 'You can keep comparing quotes or move straight into a provider conversation.',
-                  ].map((item) => (
-                    <div
-                      key={item}
-                      style={{
-                        background: 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 16,
-                        padding: 16,
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text2,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeLead && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 16,
-                  }}
-                >
+                {activeLead && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
                       {activeLead.service}
                     </div>
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      {activeLead.requester} in {activeLead.location} | {activeLead.budget} | {activeLead.urgency}
+                    </div>
                     <div
                       style={{
+                        background: 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 16,
+                        padding: 16,
+                        marginTop: 16,
                         fontSize: 13,
                         fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
+                        color: colors.text2,
+                        lineHeight: 1.7,
                       }}
                     >
-                      {activeLead.requester} in {activeLead.location} | {activeLead.budget}
+                      {activeLead.interest}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontFamily: fonts.body,
-                      color: colors.accent,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {activeLead.urgency}
-                  </div>
-                </div>
+                )}
 
-                <div
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 16,
-                    fontSize: 13,
-                    fontFamily: fonts.body,
-                    color: colors.text2,
-                    lineHeight: 1.7,
-                  }}
-                >
-                  {activeLead.interest}
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <Button
-                    size="sm"
-                    onClick={() => openMatchingMessage(activeLead.requester)}
-                    disabled={!messageThreads.some((thread) => thread.counterpart === activeLead.requester)}
-                  >
-                    Open matching message
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={onBrowse}>
-                    Browse more jobs
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {activeEscrow && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 16,
-                  }}
-                >
+                {activeEscrow && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
                       {activeEscrow.title}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
-                      }}
-                    >
-                      {activeEscrow.provider} | {activeEscrow.updatedAt}
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      {activeEscrow.provider} | {activeEscrow.updatedAt} | {activeEscrow.amount}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+                      {activeEscrow.details.map((detail) => (
+                        <div
+                          key={detail}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 16,
+                            padding: 16,
+                            fontSize: 13,
+                            fontFamily: fonts.body,
+                            color: colors.text2,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {detail}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontFamily: fonts.display,
-                      fontWeight: 700,
-                      color: colors.accent,
-                    }}
-                  >
-                    {activeEscrow.amount}
-                  </div>
-                </div>
+                )}
 
-                <div
-                  style={{
-                    background: 'rgba(255,107,43,0.08)',
-                    border: `1px solid ${colors.accentBorder}`,
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 16,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontFamily: fonts.body,
-                      fontWeight: 700,
-                      color: colors.accent,
-                      marginBottom: 8,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Escrow status
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontFamily: fonts.body,
-                      color: colors.text1,
-                    }}
-                  >
-                    {activeEscrow.status}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {activeEscrow.details.map((detail) => (
-                    <div
-                      key={detail}
-                      style={{
-                        background: 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 16,
-                        padding: 16,
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text2,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {detail}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeDetail?.kind === 'balance' && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 16,
-                  }}
-                >
+                {activeDetail?.kind === 'balance' && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
                       Provider payout balance
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
-                      }}
-                    >
-                      See available cash, pending escrow, and next release timing
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      Available: {PROVIDER_BALANCE.available} | Pending: {PROVIDER_BALANCE.pending} | Next window: {PROVIDER_BALANCE.nextWindow}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+                      {PROVIDER_BALANCE.details.map((detail) => (
+                        <div
+                          key={detail}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 16,
+                            padding: 16,
+                            fontSize: 13,
+                            fontFamily: fonts.body,
+                            color: colors.text2,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {detail}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontFamily: fonts.display,
-                      fontWeight: 700,
-                      color: colors.accent,
-                    }}
-                  >
-                    {PROVIDER_BALANCE.available}
-                  </div>
-                </div>
+                )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-                  <div
-                    style={{
-                      background: 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 16,
-                      padding: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontFamily: fonts.body,
-                        fontWeight: 700,
-                        color: colors.text3,
-                        letterSpacing: 1.6,
-                        textTransform: 'uppercase',
-                        marginBottom: 10,
-                      }}
-                    >
-                      Pending inside escrow
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 26,
-                        fontFamily: fonts.serif,
-                        color: colors.text1,
-                      }}
-                    >
-                      {PROVIDER_BALANCE.pending}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 16,
-                      padding: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontFamily: fonts.body,
-                        fontWeight: 700,
-                        color: colors.text3,
-                        letterSpacing: 1.6,
-                        textTransform: 'uppercase',
-                        marginBottom: 10,
-                      }}
-                    >
-                      Next release window
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontFamily: fonts.display,
-                        color: colors.text1,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {PROVIDER_BALANCE.nextWindow}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-                  {PROVIDER_BALANCE.details.map((detail) => (
-                    <div
-                      key={detail}
-                      style={{
-                        background: 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 16,
-                        padding: 16,
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text2,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {detail}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activePayout && (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    marginBottom: 16,
-                  }}
-                >
+                {activePayout && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontFamily: fonts.display,
-                        fontWeight: 700,
-                        color: colors.text1,
-                      }}
-                    >
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
                       {activePayout.title}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text3,
-                        marginTop: 6,
-                      }}
-                    >
-                      {activePayout.date} | {activePayout.status}
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      {activePayout.date} | {activePayout.status} | {activePayout.amount}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+                      {activePayout.details.map((detail) => (
+                        <div
+                          key={detail}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 16,
+                            padding: 16,
+                            fontSize: 13,
+                            fontFamily: fonts.body,
+                            color: colors.text2,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {detail}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontFamily: fonts.display,
-                      fontWeight: 700,
-                      color: colors.accent,
-                    }}
-                  >
-                    {activePayout.amount}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {activePayout.details.map((detail) => (
-                    <div
-                      key={detail}
-                      style={{
-                        background: 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 16,
-                        padding: 16,
-                        fontSize: 13,
-                        fontFamily: fonts.body,
-                        color: colors.text2,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {detail}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                )}
               </Panel>
             </div>
           </div>
