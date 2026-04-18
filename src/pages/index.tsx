@@ -7,16 +7,23 @@ import Categories from '@/components/Categories';
 import RequestForm from '@/components/RequestForm';
 import BidsView from '@/components/BidsView';
 import BrowseJobs from '@/components/BrowseJobs';
+import ProfileDashboard from '@/components/ProfileDashboard';
 import { SelectedCategory } from '@/lib/constants';
+import type { DashboardRole } from '@/lib/dashboard';
 
-type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse';
+type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse' | 'dashboard';
 
 export default function Home() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const [screen, setScreen] = useState<Screen>('splash');
   const [selectedCategory, setSelectedCategory] = useState<SelectedCategory | null>(null);
+  const [dashboardRole, setDashboardRole] = useState<DashboardRole>('customer');
 
   const navigate = (s: Screen) => setScreen(s);
+  const navigateDashboard = (role: DashboardRole) => {
+    setDashboardRole(role);
+    setScreen('dashboard');
+  };
 
   useEffect(() => {
     if (status !== 'authenticated') {
@@ -24,11 +31,18 @@ export default function Home() {
     }
 
     const returnScreen = window.localStorage.getItem('skopyr:return-screen');
+    const returnRole = window.localStorage.getItem('skopyr:return-role');
 
     if (returnScreen === 'bids') {
       navigate('bids');
-      window.localStorage.removeItem('skopyr:return-screen');
     }
+
+    if (returnScreen === 'dashboard') {
+      navigateDashboard(returnRole === 'provider' ? 'provider' : 'customer');
+    }
+
+    window.localStorage.removeItem('skopyr:return-screen');
+    window.localStorage.removeItem('skopyr:return-role');
   }, [status]);
 
   return (
@@ -38,7 +52,13 @@ export default function Home() {
       </Head>
 
       {screen === 'splash' && <Splash onComplete={() => navigate('home')} />}
-      {screen === 'home' && <Hero onPost={() => navigate('categories')} onBrowse={() => navigate('browse')} />}
+      {screen === 'home' && (
+        <Hero
+          onPost={() => navigate('categories')}
+          onBrowse={() => navigate('browse')}
+          onDashboard={navigateDashboard}
+        />
+      )}
       {screen === 'categories' && (
         <Categories
           onSelect={(cat) => { setSelectedCategory(cat); navigate('form'); }}
@@ -59,6 +79,17 @@ export default function Home() {
         />
       )}
       {screen === 'browse' && <BrowseJobs onBack={() => navigate('home')} />}
+      {screen === 'dashboard' && (
+        <ProfileDashboard
+          role={dashboardRole}
+          userName={session?.user?.name}
+          userEmail={session?.user?.email}
+          onRoleChange={setDashboardRole}
+          onHome={() => navigate('home')}
+          onBrowse={() => navigate('browse')}
+          onPost={() => navigate('categories')}
+        />
+      )}
     </>
   );
 }

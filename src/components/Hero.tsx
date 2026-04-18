@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState, useRef, ReactNode } from 'react';
 import { colors, fonts, categories } from '@/lib/constants';
+import type { DashboardRole } from '@/lib/dashboard';
 import Button from './Button';
 import AuthControls from './AuthControls';
 
 interface Props {
   onPost: () => void;
   onBrowse: () => void;
+  onDashboard: (role: DashboardRole) => void;
 }
 
 /* ── Scroll-triggered reveal ── */
@@ -77,7 +79,7 @@ function Step({ num, title, desc, delay }: { num: string; title: string; desc: s
   );
 }
 
-export default function Hero({ onPost, onBrowse }: Props) {
+export default function Hero({ onPost, onBrowse, onDashboard }: Props) {
   const [v, setV] = useState(false);
   const [u, goU] = useCount(2847);
   const [pr, goPr] = useCount(412);
@@ -123,7 +125,7 @@ export default function Hero({ onPost, onBrowse }: Props) {
           }}>
             SK<span style={{ color: colors.accent }}>O</span>PYR
           </div>
-          <AuthControls onBrowse={onBrowse} />
+          <AuthControls onBrowse={onBrowse} onDashboard={onDashboard} />
         </nav>
 
         {/* Hero content */}

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
+import type { DashboardRole } from '@/lib/dashboard';
 import { isGoogleProviderAvailable } from '@/lib/googleAuth';
 import Button from './Button';
 
 interface Props {
   onBrowse: () => void;
+  onDashboard: (role: DashboardRole) => void;
 }
 
-export default function AuthControls({ onBrowse }: Props) {
+export default function AuthControls({ onBrowse, onDashboard }: Props) {
   const { data: session } = useSession();
   const [googleReady, setGoogleReady] = useState(false);
   const [checkingGoogle, setCheckingGoogle] = useState(true);
@@ -41,7 +43,7 @@ export default function AuthControls({ onBrowse }: Props) {
     };
   }, []);
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (role: DashboardRole) => {
     setLoading(true);
     setMessage(null);
 
@@ -56,6 +58,8 @@ export default function AuthControls({ onBrowse }: Props) {
       return;
     }
 
+    window.localStorage.setItem('skopyr:return-screen', 'dashboard');
+    window.localStorage.setItem('skopyr:return-role', role);
     await signIn('google');
   };
 
@@ -77,6 +81,9 @@ export default function AuthControls({ onBrowse }: Props) {
             <Button variant="outline" size="sm" disabled style={{ opacity: 1 }}>
               {session.user.name || session.user.email || 'Signed in'}
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => onDashboard('customer')}>
+              My profile
+            </Button>
             <Button size="sm" onClick={handleSignOut} disabled={loading}>
               {loading ? 'Signing out...' : 'Sign out'}
             </Button>
@@ -86,12 +93,12 @@ export default function AuthControls({ onBrowse }: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleGoogleSignIn}
+              onClick={() => handleGoogleSignIn('customer')}
               disabled={loading || checkingGoogle}
             >
               {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Sign in with Google'}
             </Button>
-            <Button size="sm" onClick={handleGoogleSignIn} disabled={loading || checkingGoogle}>
+            <Button size="sm" onClick={() => handleGoogleSignIn('provider')} disabled={loading || checkingGoogle}>
               {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Join as provider'}
             </Button>
           </>
