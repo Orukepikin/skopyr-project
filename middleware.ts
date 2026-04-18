@@ -10,7 +10,7 @@ export function middleware(request: NextRequest) {
   if (host === APEX_HOST) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.hostname = WWW_HOST;
-    return NextResponse.redirect(redirectUrl, 308);
+    return NextResponse.redirect(redirectUrl, { status: 308 });
   }
 
   return NextResponse.next();

@@ -51,7 +51,7 @@ ${urls
 }
 
 export const getServerSideProps: GetServerSideProps = async ({ res }) => {
-  res.setHeader('Content-Type', 'text/xml');
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
   res.write(createSitemap());
   res.end();
 
