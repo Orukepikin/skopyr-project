@@ -213,7 +213,7 @@ export function useMarketplace(
           return result.state.browseRequests.find((request) => request.id === result.requestId) || null;
         },
       ),
-    [fallbackState, mutate, setFallbackState],
+    [fallbackState, mutate, refresh, setFallbackState],
   );
 
   const sendMessage = useCallback(
@@ -249,7 +249,7 @@ export function useMarketplace(
           return result.threadId;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const markThreadRead = useCallback(
@@ -273,7 +273,7 @@ export function useMarketplace(
           return true;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const createAd = useCallback(
@@ -297,7 +297,7 @@ export function useMarketplace(
           return true;
         },
       ),
-    [fallbackState, mutate, setFallbackState],
+    [fallbackState, mutate, refresh, setFallbackState],
   );
 
   const createBid = useCallback(

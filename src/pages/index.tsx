@@ -385,9 +385,11 @@ export default function Home() {
       message: draft.message,
     });
 
-    if (bid?.id) {
-      navigateDashboard('provider', { kind: 'bid', id: bid.id });
+    if (!bid?.id) {
+      throw new Error('Unable to save your provider bid right now.');
     }
+
+    return bid;
   };
 
   const handleUpdateBid = async (bidId: string, draft: BidUpdateDraft) => {
@@ -574,7 +576,7 @@ export default function Home() {
           providerBidMap={providerBidMap}
           canAct={Boolean(session?.user?.email)}
           onRequireAuth={() => void promptGoogleSignIn('browse', 'provider')}
-          onSubmitBid={(request, draft) => void handleCreateBid(request.id, draft)}
+          onSubmitBid={(request, draft) => handleCreateBid(request.id, draft)}
           onMessageRequester={(request) =>
             void handleProviderToCustomerMessage({
               requesterName: request.requester,

@@ -15,7 +15,10 @@ interface Props {
   canAct: boolean;
   onRequireAuth: () => void | Promise<void>;
   onMessageRequester: (request: BrowseRequest) => void;
-  onSubmitBid: (request: BrowseRequest, draft: BidUpdateDraft) => void | Promise<void>;
+  onSubmitBid: (
+    request: BrowseRequest,
+    draft: BidUpdateDraft,
+  ) => MarketplaceBid | null | void | Promise<MarketplaceBid | null | void>;
 }
 
 const DEFAULT_BID_DRAFT: BidUpdateDraft = {
@@ -48,6 +51,7 @@ export default function BrowseJobs({
   const [bidDraft, setBidDraft] = useState<BidUpdateDraft>(DEFAULT_BID_DRAFT);
   const [savingBid, setSavingBid] = useState(false);
   const [bidError, setBidError] = useState<string | null>(null);
+  const [bidSuccess, setBidSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setVisible(true), 50);
@@ -58,6 +62,15 @@ export default function BrowseJobs({
     () => requests.find((request) => request.id === editingRequestId) ?? null,
     [editingRequestId, requests],
   );
+  const submittedBidCount = useMemo(
+    () => Object.values(providerBidMap).filter(Boolean).length,
+    [providerBidMap],
+  );
+  const quotedRequestCount = useMemo(
+    () => requests.filter((request) => Boolean(providerBidMap[request.id])).length,
+    [providerBidMap, requests],
+  );
+  const openRequestCount = Math.max(requests.length - quotedRequestCount, 0);
 
   const openBidModal = (request: BrowseRequest) => {
     if (!canAct) {
@@ -77,6 +90,7 @@ export default function BrowseJobs({
         `Hi ${request.requester.split(' ')[0]}, I can help with "${request.title}" and I can start ${request.when.toLowerCase()}.`,
     });
     setBidError(null);
+    setBidSuccess(null);
     setEditingRequestId(request.id);
   };
 
@@ -105,6 +119,11 @@ export default function BrowseJobs({
         eta: bidDraft.eta.trim(),
         message: bidDraft.message.trim(),
       });
+      setBidSuccess(
+        providerBidMap[activeRequest.id]
+          ? `Your bid for "${activeRequest.title}" has been updated.`
+          : `Your bid for "${activeRequest.title}" is now live and visible to the buyer.`,
+      );
       closeBidModal();
     } catch (error) {
       setBidError(error instanceof Error ? error.message : 'Unable to save your bid right now.');
@@ -173,6 +192,79 @@ export default function BrowseJobs({
           Message requesters directly, send a real quote, and come back later to edit the same bid.
         </p>
 
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          {[
+            {
+              label: 'Your live bids',
+              value: `${submittedBidCount}`,
+              note: 'Provider bids already submitted from your profile',
+            },
+            {
+              label: 'Requests quoted',
+              value: `${quotedRequestCount}`,
+              note: 'Open requests where your bid is already visible',
+            },
+            {
+              label: 'Still open',
+              value: `${openRequestCount}`,
+              note: 'Requests you can still message or bid on',
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                background: colors.card,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 16,
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontFamily: fonts.body,
+                  color: colors.text3,
+                  letterSpacing: 1.6,
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                }}
+              >
+                {item.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 28,
+                  fontFamily: fonts.display,
+                  fontWeight: 700,
+                  color: colors.text1,
+                  marginTop: 10,
+                  letterSpacing: '-0.8px',
+                }}
+              >
+                {item.value}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontFamily: fonts.body,
+                  color: colors.text3,
+                  marginTop: 8,
+                  lineHeight: 1.6,
+                }}
+              >
+                {item.note}
+              </div>
+            </div>
+          ))}
+        </div>
+
         {!canAct && (
           <div
             style={{
@@ -188,6 +280,24 @@ export default function BrowseJobs({
             }}
           >
             Sign in with Google first so your bids and buyer conversations are saved to your provider profile.
+          </div>
+        )}
+
+        {bidSuccess && (
+          <div
+            style={{
+              margin: '0 0 16px',
+              background: 'rgba(34,197,94,0.1)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              borderRadius: 14,
+              padding: '12px 14px',
+              fontSize: 12,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              lineHeight: 1.6,
+            }}
+          >
+            {bidSuccess}
           </div>
         )}
 
@@ -321,14 +431,27 @@ export default function BrowseJobs({
                     </div>
                   </div>
 
-                  <div style={{ minWidth: 210, textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
-                      {request.ago} ago
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontFamily: fonts.body,
+                    <div style={{ minWidth: 210, textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
+                        {request.ago} ago
+                      </div>
+                      {existingBid && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            color: colors.success,
+                            fontWeight: 700,
+                            marginTop: 6,
+                          }}
+                        >
+                          Your bid is live
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: fonts.body,
                         color: request.bids < 3 ? colors.success : '#F59E0B',
                         fontWeight: 700,
                         marginTop: 4,
