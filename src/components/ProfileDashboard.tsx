@@ -14,6 +14,13 @@ import type {
   ProviderLead,
   SponsoredAd,
 } from '@/lib/marketplace';
+import {
+  SPONSORED_AD_PLANS,
+  formatNaira,
+  formatSponsoredAdWindow,
+  getSponsoredAdPlan,
+  isSponsoredAdExpired,
+} from '@/lib/marketplace';
 import Button from './Button';
 
 interface Props {
@@ -37,7 +44,21 @@ interface Props {
   onPost: () => void;
   onSendMessage: (role: DashboardRole, threadId: string, body: string) => void;
   onOpenThread: (role: DashboardRole, threadId: string) => void;
-  onCreateAd: (draft: AdDraft) => void;
+  onCreateAd: (
+    draft: AdDraft,
+  ) => Promise<
+    | { mode: 'created' }
+    | {
+        mode: 'checkout';
+        accessCode: string;
+        reference: string;
+        amount: number;
+        planId: string;
+        planName: string;
+        budgetLabel: string;
+      }
+  >;
+  onVerifyAdPayment: (reference: string) => Promise<boolean>;
   onUpdateBid: (bidId: string, draft: BidUpdateDraft) => void;
   onToggleAd: (adId: string) => void;
   onClearInitialDetail: () => void;
@@ -140,6 +161,35 @@ function EmptyPanelMessage({ children }: { children: ReactNode }) {
   );
 }
 
+const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+
+function createDefaultAdDraft(planId: AdDraft['planId'] = 'starter_week'): AdDraft {
+  const plan = getSponsoredAdPlan(planId || 'starter_week');
+
+  return {
+    planId: plan.id,
+    service: '',
+    headline: '',
+    body: '',
+    location: 'Abuja',
+    startingPrice: 'From NGN 15k',
+    budget: plan.budgetLabel,
+    badge: plan.badge,
+  };
+}
+
+function getSponsoredAdStatusLabel(ad: SponsoredAd) {
+  if (ad.paymentStatus === 'pending') {
+    return 'Awaiting payment';
+  }
+
+  if (ad.expiresAt && isSponsoredAdExpired(ad.expiresAt)) {
+    return 'Expired';
+  }
+
+  return ad.active ? 'Live' : 'Paused';
+}
+
 export default function ProfileDashboard({
   role,
   userName,
@@ -162,6 +212,7 @@ export default function ProfileDashboard({
   onSendMessage,
   onOpenThread,
   onCreateAd,
+  onVerifyAdPayment,
   onUpdateBid,
   onToggleAd,
   onClearInitialDetail,
@@ -174,15 +225,13 @@ export default function ProfileDashboard({
     eta: 'Today 4 PM',
     message: '',
   });
-  const [adDraft, setAdDraft] = useState<AdDraft>({
-    service: '',
-    headline: '',
-    body: '',
-    location: 'Abuja',
-    startingPrice: 'From NGN 15k',
-    budget: 'NGN 10k / week',
-    badge: 'Sponsored',
-  });
+  const [adDraft, setAdDraft] = useState<AdDraft>(createDefaultAdDraft);
+  const [adPaymentState, setAdPaymentState] = useState<
+    'idle' | 'initializing' | 'verifying' | 'success' | 'error'
+  >('idle');
+  const [adPaymentMessage, setAdPaymentMessage] = useState<string | null>(null);
+  const sponsoredPlans = SPONSORED_AD_PLANS.filter((plan) => plan.id !== 'legacy_featured');
+  const selectedAdPlan = getSponsoredAdPlan(adDraft.planId || 'starter_week');
 
   const messageThreads = role === 'provider' ? providerThreads : customerThreads;
 
@@ -319,30 +368,94 @@ export default function ProfileDashboard({
     setDraftReply('');
   };
 
-  const handleCreateAd = () => {
-    if (!adDraft.service.trim() || !adDraft.headline.trim() || !adDraft.body.trim()) {
+  const resetAdPaymentFeedback = () => {
+    setAdPaymentState('idle');
+    setAdPaymentMessage(null);
+  };
+
+  const handleCreateAd = async () => {
+    resetAdPaymentFeedback();
+
+    if (
+      !adDraft.service.trim() ||
+      !adDraft.headline.trim() ||
+      !adDraft.body.trim() ||
+      !adDraft.startingPrice.trim()
+    ) {
+      setAdPaymentState('error');
+      setAdPaymentMessage('Add the service, headline, copy, and starting price before checkout.');
       return;
     }
 
-    onCreateAd({
-      ...adDraft,
-      service: adDraft.service.trim(),
-      headline: adDraft.headline.trim(),
-      body: adDraft.body.trim(),
-      location: adDraft.location.trim(),
-      startingPrice: adDraft.startingPrice.trim(),
-      budget: adDraft.budget.trim(),
-    });
+    if (!PAYSTACK_PUBLIC_KEY) {
+      setAdPaymentState('error');
+      setAdPaymentMessage(
+        'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is missing. Add it in Vercel before selling ad placements.',
+      );
+      return;
+    }
 
-    setAdDraft({
-      service: '',
-      headline: '',
-      body: '',
-      location: 'Abuja',
-      startingPrice: 'From NGN 15k',
-      budget: 'NGN 10k / week',
-      badge: 'Sponsored',
-    });
+    try {
+      setAdPaymentState('initializing');
+      setAdPaymentMessage(null);
+
+      const checkout = await onCreateAd({
+        ...adDraft,
+        planId: selectedAdPlan.id,
+        service: adDraft.service.trim(),
+        headline: adDraft.headline.trim(),
+        body: adDraft.body.trim(),
+        location: adDraft.location.trim(),
+        startingPrice: adDraft.startingPrice.trim(),
+        budget: selectedAdPlan.budgetLabel,
+        badge: selectedAdPlan.badge,
+      });
+
+      if (checkout.mode === 'created') {
+        setAdDraft(createDefaultAdDraft(selectedAdPlan.id));
+        setAdPaymentState('success');
+        setAdPaymentMessage('Sponsored ad created locally without checkout.');
+        return;
+      }
+
+      const { default: PaystackPop } = await import('@paystack/inline-js');
+      const paystack = new PaystackPop();
+
+      paystack.resumeTransaction(checkout.accessCode, {
+        onCancel: () => {
+          setAdPaymentState('idle');
+          setAdPaymentMessage('Sponsored ad checkout was cancelled before payment completed.');
+        },
+        onError: (error) => {
+          setAdPaymentState('error');
+          setAdPaymentMessage(error.message || 'Unable to open the sponsored ad checkout.');
+        },
+        onSuccess: async (transaction) => {
+          try {
+            setAdPaymentState('verifying');
+            setAdPaymentMessage('Verifying your sponsored ad payment...');
+            await onVerifyAdPayment(transaction.reference);
+            setAdDraft(createDefaultAdDraft(selectedAdPlan.id));
+            setAdPaymentState('success');
+            setAdPaymentMessage(
+              `${selectedAdPlan.name} is now live. Your sponsored service will appear in premium placements immediately.`,
+            );
+          } catch (error) {
+            setAdPaymentState('error');
+            setAdPaymentMessage(
+              error instanceof Error
+                ? error.message
+                : 'Unable to verify the sponsored ad payment.',
+            );
+          }
+        },
+      });
+    } catch (error) {
+      setAdPaymentState('error');
+      setAdPaymentMessage(
+        error instanceof Error ? error.message : 'Unable to initialize the ad checkout.',
+      );
+    }
   };
 
   const handleBidUpdate = () => {
@@ -902,7 +1015,7 @@ export default function ProfileDashboard({
                               {ad.headline}
                             </div>
                             <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
-                              {ad.service} | {ad.location} | {ad.budget}
+                              {ad.service} | {ad.location} | {getSponsoredAdPlan(ad.planId).name}
                             </div>
                           </div>
                           <div
@@ -910,17 +1023,32 @@ export default function ProfileDashboard({
                               fontSize: 12,
                               fontFamily: fonts.body,
                               color: ad.active ? colors.success : colors.text3,
+                              fontWeight: 700,
                             }}
                           >
-                            {ad.active ? 'Live' : 'Paused'}
+                            {getSponsoredAdStatusLabel(ad)}
                           </div>
                         </div>
                         <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7, marginTop: 12 }}>
                           {ad.body}
                         </div>
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 10 }}>
+                          {ad.budget} | {formatSponsoredAdWindow(ad.expiresAt)}
+                        </div>
                         <div style={{ marginTop: 12 }}>
-                          <Button size="sm" variant={ad.active ? 'outline' : 'primary'} onClick={() => onToggleAd(ad.id)}>
-                            {ad.active ? 'Pause ad' : 'Reactivate ad'}
+                          <Button
+                            size="sm"
+                            variant={ad.active ? 'outline' : 'primary'}
+                            onClick={() => onToggleAd(ad.id)}
+                            disabled={ad.paymentStatus === 'pending' || (ad.expiresAt ? isSponsoredAdExpired(ad.expiresAt) : false)}
+                          >
+                            {ad.paymentStatus === 'pending'
+                              ? 'Awaiting payment'
+                              : ad.expiresAt && isSponsoredAdExpired(ad.expiresAt)
+                                ? 'Expired'
+                                : ad.active
+                                  ? 'Pause ad'
+                                  : 'Reactivate ad'}
                           </Button>
                         </div>
                       </div>
@@ -928,9 +1056,62 @@ export default function ProfileDashboard({
 
                     {sponsoredAds.length === 0 && (
                       <EmptyPanelMessage>
-                        You have not launched a sponsored ad yet. Create one below and it will show up above the fold on the homepage.
+                        You have not launched a sponsored ad yet. Pick a plan below, pay through Paystack, and your service will show up above the fold on the homepage.
                       </EmptyPanelMessage>
                     )}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontFamily: fonts.body,
+                      fontWeight: 700,
+                      color: colors.text3,
+                      letterSpacing: 1.6,
+                      textTransform: 'uppercase',
+                      marginBottom: 10,
+                    }}
+                  >
+                    Choose your ad plan
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      gap: 10,
+                      marginBottom: 18,
+                    }}
+                  >
+                    {sponsoredPlans.map((plan) => (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => {
+                          resetAdPaymentFeedback();
+                          setAdDraft((current) => ({
+                            ...current,
+                            planId: plan.id,
+                            budget: plan.budgetLabel,
+                            badge: plan.badge,
+                          }));
+                        }}
+                        style={{
+                          ...clickableCardStyle(adDraft.planId === plan.id),
+                          padding: 14,
+                        }}
+                      >
+                        <div style={{ fontSize: 15, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                          {plan.name}
+                        </div>
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                          {formatNaira(plan.priceKobo / 100)} | {plan.durationDays} days
+                        </div>
+                        <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.6, marginTop: 10 }}>
+                          {plan.visibility}
+                        </div>
+                      </button>
+                    ))}
                   </div>
 
                   {[
@@ -939,7 +1120,6 @@ export default function ProfileDashboard({
                     { key: 'body', label: 'Ad copy', multiline: true },
                     { key: 'location', label: 'Target area' },
                     { key: 'startingPrice', label: 'Starting price' },
-                    { key: 'budget', label: 'Budget' },
                   ].map((field) => (
                     <div key={field.key} style={{ marginBottom: 12 }}>
                       <div
@@ -997,8 +1177,50 @@ export default function ProfileDashboard({
                     </div>
                   ))}
 
-                  <Button full onClick={handleCreateAd}>
-                    Launch sponsored ad
+                  <div
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 16,
+                      padding: 16,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontFamily: fonts.body, fontWeight: 700, color: colors.text1 }}>
+                      {selectedAdPlan.name}
+                    </div>
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, marginTop: 8, lineHeight: 1.7 }}>
+                      {selectedAdPlan.note}
+                    </div>
+                    <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 10 }}>
+                      You will pay {formatNaira(selectedAdPlan.priceKobo / 100)} through Paystack and the campaign will run for {selectedAdPlan.durationDays} days after verification.
+                    </div>
+                  </div>
+
+                  {adPaymentMessage && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontFamily: fonts.body,
+                        color: adPaymentState === 'success' ? colors.success : colors.text2,
+                        lineHeight: 1.6,
+                        marginBottom: 12,
+                      }}
+                    >
+                      {adPaymentMessage}
+                    </div>
+                  )}
+
+                  <Button
+                    full
+                    onClick={() => void handleCreateAd()}
+                    disabled={adPaymentState === 'initializing' || adPaymentState === 'verifying'}
+                  >
+                    {adPaymentState === 'initializing'
+                      ? 'Opening Paystack...'
+                      : adPaymentState === 'verifying'
+                        ? 'Verifying payment...'
+                        : `Pay ${formatNaira(selectedAdPlan.priceKobo / 100)} and launch`}
                   </Button>
                 </div>
               </div>

@@ -1,0 +1,46 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { finalizeSponsoredAdPayment } from '@/lib/marketplace-server';
+import { verifyPaystackTransaction } from '@/lib/paystack';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ message: 'Method not allowed.' });
+  }
+
+  const reference = Array.isArray(req.query.reference) ? req.query.reference[0] : req.query.reference;
+
+  if (!reference) {
+    return res.status(400).json({ message: 'Payment reference is required.' });
+  }
+
+  try {
+    const session = await getServerSession(req, res, authOptions);
+
+    if (!session?.user?.email) {
+      return res.status(401).json({ message: 'Sign in before verifying a sponsored ad payment.' });
+    }
+
+    const response = await verifyPaystackTransaction(reference);
+
+    if (response.data.status !== 'success') {
+      return res.status(400).json({
+        message: `Payment has not completed successfully. Current status: ${response.data.status}.`,
+      });
+    }
+
+    const ad = await finalizeSponsoredAdPayment(reference, response.data.metadata);
+
+    return res.status(200).json({
+      verified: true,
+      reference: response.data.reference,
+      ad,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unable to verify the sponsored ad payment.';
+    return res.status(500).json({ message });
+  }
+}

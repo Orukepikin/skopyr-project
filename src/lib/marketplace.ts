@@ -55,6 +55,7 @@ export interface SponsoredAd {
   id: string;
   providerProfileId?: string | null;
   providerName: string;
+  planId: SponsoredAdPlanId;
   service: string;
   headline: string;
   body: string;
@@ -64,9 +65,29 @@ export interface SponsoredAd {
   badge: string;
   budget: string;
   active: boolean;
+  paymentStatus: 'paid' | 'pending';
+  createdAt?: string | null;
+  expiresAt?: string | null;
   rating: number;
   jobs: number;
   verified: boolean;
+}
+
+export type SponsoredAdPlanId =
+  | 'starter_week'
+  | 'spotlight_fortnight'
+  | 'citywide_month'
+  | 'legacy_featured';
+
+export interface SponsoredAdPlan {
+  id: SponsoredAdPlanId;
+  name: string;
+  badge: string;
+  budgetLabel: string;
+  priceKobo: number;
+  durationDays: number;
+  visibility: string;
+  note: string;
 }
 
 export interface MarketplaceBid {
@@ -94,6 +115,7 @@ export interface MarketplaceBid {
 }
 
 export interface AdDraft {
+  planId?: SponsoredAdPlanId;
   service: string;
   headline: string;
   body: string;
@@ -201,6 +223,49 @@ export interface SendMessageInput {
 
 const STORAGE_KEY = 'skopyr:marketplace-state';
 const DEFAULT_CITY = 'Abuja';
+const LEGACY_SPONSORED_AD_PLAN: SponsoredAdPlan = {
+  id: 'legacy_featured',
+  name: 'Legacy Featured',
+  badge: 'Featured',
+  budgetLabel: 'Legacy featured placement',
+  priceKobo: 0,
+  durationDays: 365,
+  visibility: 'Previously launched ad placement carried forward into the paid system.',
+  note: 'Legacy campaigns stay visible while you migrate to the new paid plans.',
+};
+
+export const SPONSORED_AD_PLANS: SponsoredAdPlan[] = [
+  {
+    id: 'starter_week',
+    name: 'Starter Week',
+    badge: 'Sponsored',
+    budgetLabel: 'Starter Week · NGN 10k',
+    priceKobo: 1_000_000,
+    durationDays: 7,
+    visibility: 'Homepage rail placement plus direct-message CTA for one week.',
+    note: 'Best for testing demand and getting your first premium conversations.',
+  },
+  {
+    id: 'spotlight_fortnight',
+    name: 'Spotlight 14 Days',
+    badge: 'Featured',
+    budgetLabel: 'Spotlight 14 Days · NGN 25k',
+    priceKobo: 2_500_000,
+    durationDays: 14,
+    visibility: 'Longer homepage visibility with stronger priority in premium surfaces.',
+    note: 'Ideal when you want more message volume across two busy work weeks.',
+  },
+  {
+    id: 'citywide_month',
+    name: 'Citywide 30 Days',
+    badge: 'Top spot',
+    budgetLabel: 'Citywide 30 Days · NGN 60k',
+    priceKobo: 6_000_000,
+    durationDays: 30,
+    visibility: 'The longest premium run for providers who want to stay visible all month.',
+    note: 'Best value if ads are part of your regular customer acquisition strategy.',
+  },
+];
 
 const DEFAULT_PROVIDER_BALANCE: ProviderBalance = {
   available: 'NGN 0',
@@ -540,6 +605,7 @@ const INITIAL_STATE: MarketplaceState = {
       id: 'ad-1',
       providerProfileId: 'fallback-provider-chidi',
       providerName: 'Sparkline Power',
+      planId: 'starter_week',
       service: 'Generator repair',
       headline: 'Sponsor your power fix with same-day generator specialists',
       body:
@@ -548,8 +614,11 @@ const INITIAL_STATE: MarketplaceState = {
       startingPrice: 'From NGN 18k',
       cta: 'Message sponsor',
       badge: 'Sponsored',
-      budget: 'NGN 20k / week',
+      budget: 'Starter Week · NGN 10k',
       active: true,
+      paymentStatus: 'paid',
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
       rating: 4.9,
       jobs: 234,
       verified: true,
@@ -558,6 +627,7 @@ const INITIAL_STATE: MarketplaceState = {
       id: 'ad-2',
       providerProfileId: 'fallback-provider-polarcool',
       providerName: 'PolarCool Services',
+      planId: 'spotlight_fortnight',
       service: 'AC repair',
       headline: 'Be the first provider buyers see for AC repairs in Abuja',
       body:
@@ -565,9 +635,12 @@ const INITIAL_STATE: MarketplaceState = {
       location: 'Wuse and Maitama',
       startingPrice: 'From NGN 12k',
       cta: 'Open ad',
-      badge: 'Top spot',
-      budget: 'NGN 14k / week',
+      badge: 'Featured',
+      budget: 'Spotlight 14 Days · NGN 25k',
       active: true,
+      paymentStatus: 'paid',
+      createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
       rating: 4.8,
       jobs: 156,
       verified: true,
@@ -576,15 +649,19 @@ const INITIAL_STATE: MarketplaceState = {
       id: 'ad-3',
       providerProfileId: 'fallback-provider-cleannest',
       providerName: 'CleanNest Crew',
+      planId: 'citywide_month',
       service: 'Home cleaning',
       headline: 'Get premium cleaning jobs with promoted visibility',
       body: 'Ideal for weekend move-ins, deep cleans, and office turnover jobs.',
       location: 'Maitama and Gwarinpa',
       startingPrice: 'From NGN 20k',
       cta: 'View ad',
-      badge: 'Featured',
-      budget: 'NGN 11k / week',
+      badge: 'Top spot',
+      budget: 'Citywide 30 Days · NGN 60k',
       active: true,
+      paymentStatus: 'paid',
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 27 * 24 * 60 * 60 * 1000).toISOString(),
       rating: 4.7,
       jobs: 189,
       verified: true,
@@ -786,6 +863,74 @@ export function formatNaira(amount: number) {
 
 export function formatBudget(min: number, max: number) {
   return `${formatNaira(min)} - ${formatNaira(max)}`;
+}
+
+export function getSponsoredAdPlan(planId?: string | null) {
+  return (
+    SPONSORED_AD_PLANS.find((plan) => plan.id === planId) || LEGACY_SPONSORED_AD_PLAN
+  );
+}
+
+export function getSponsoredAdPlanFromBudgetLabel(label?: string | null) {
+  if (!label) {
+    return LEGACY_SPONSORED_AD_PLAN;
+  }
+
+  return (
+    SPONSORED_AD_PLANS.find((plan) => plan.budgetLabel === label || plan.name === label) ||
+    LEGACY_SPONSORED_AD_PLAN
+  );
+}
+
+export function buildSponsoredAdWindow(
+  planId: SponsoredAdPlanId,
+  referenceDate: string | Date = new Date(),
+) {
+  const plan = getSponsoredAdPlan(planId);
+  const startsAt = toDateValue(referenceDate);
+  const expiresAt = new Date(startsAt);
+  expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
+
+  return {
+    startsAt: startsAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+export function isSponsoredAdExpired(expiresAt?: string | null, referenceDate: string | Date = new Date()) {
+  if (!expiresAt) {
+    return false;
+  }
+
+  const expiry = toDateValue(expiresAt);
+  const reference = toDateValue(referenceDate);
+
+  if (Number.isNaN(expiry.getTime()) || Number.isNaN(reference.getTime())) {
+    return false;
+  }
+
+  return expiry.getTime() <= reference.getTime();
+}
+
+export function formatSponsoredAdWindow(expiresAt?: string | null) {
+  if (!expiresAt) {
+    return 'Waiting for payment';
+  }
+
+  const expiry = toDateValue(expiresAt);
+
+  if (Number.isNaN(expiry.getTime())) {
+    return 'Schedule pending';
+  }
+
+  if (isSponsoredAdExpired(expiresAt)) {
+    return `Expired ${formatRelativeTime(expiresAt)}`;
+  }
+
+  return `Runs until ${expiry.toLocaleDateString('en-NG', {
+    month: 'short',
+    day: 'numeric',
+  })}`;
 }
 
 export function formatRelativeTime(input: string | Date) {
@@ -1363,19 +1508,25 @@ export function createFallbackAd(
     return state;
   }
 
+  const plan = getSponsoredAdPlan(draft.planId || 'starter_week');
+  const window = buildSponsoredAdWindow(plan.id);
   const nextAd: SponsoredAd = {
     id: `ad-${Date.now()}`,
     providerProfileId: viewer.id,
     providerName: viewer.name,
+    planId: plan.id,
     service: draft.service,
     headline: draft.headline,
     body: draft.body,
     location: draft.location,
     startingPrice: draft.startingPrice,
     cta: 'Message sponsor',
-    badge: draft.badge || 'Sponsored',
-    budget: draft.budget,
+    badge: plan.badge,
+    budget: plan.budgetLabel,
     active: true,
+    paymentStatus: 'paid',
+    createdAt: window.startsAt,
+    expiresAt: window.expiresAt,
     rating: viewer.rating,
     jobs: viewer.completedJobs,
     verified: viewer.verified,

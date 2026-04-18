@@ -1,12 +1,16 @@
 import crypto from 'node:crypto';
 import type { Session } from 'next-auth';
 import {
+  buildSponsoredAdWindow,
   createThreadKey,
   emptyMarketplaceState,
   formatBudget,
   formatClockTime,
   formatNaira,
   formatRelativeTime,
+  getSponsoredAdPlan,
+  getSponsoredAdPlanFromBudgetLabel,
+  isSponsoredAdExpired,
   nextPayoutWindowLabel,
   normalizeServiceLabel,
   type AdDraft,
@@ -302,11 +306,21 @@ async function ensureProfile(user: SessionUser, rolePreference?: AppRole) {
 
 function mapSponsoredAd(row: SponsoredAdRow, profile: ProfileRow | undefined): SponsoredAd {
   const summary = profile ? toProfileSummary(profile) : null;
+  const plan = getSponsoredAdPlanFromBudgetLabel(row.budget);
+  const lifecycle =
+    plan.id === 'legacy_featured'
+      ? { active: row.active, expiresAt: null as string | null, paymentStatus: 'paid' as const }
+      : {
+          active: row.active && !isSponsoredAdExpired(buildSponsoredAdWindow(plan.id, row.created_at).expiresAt),
+          expiresAt: buildSponsoredAdWindow(plan.id, row.created_at).expiresAt,
+          paymentStatus: 'paid' as const,
+        };
 
   return {
     id: row.id,
     providerProfileId: row.provider_profile_id,
     providerName: summary?.name || row.provider_profile_id,
+    planId: plan.id,
     service: row.service,
     headline: row.headline,
     body: row.body,
@@ -315,7 +329,10 @@ function mapSponsoredAd(row: SponsoredAdRow, profile: ProfileRow | undefined): S
     cta: 'Message sponsor',
     badge: row.badge,
     budget: row.budget,
-    active: row.active,
+    active: lifecycle.active,
+    paymentStatus: lifecycle.paymentStatus,
+    createdAt: row.created_at,
+    expiresAt: lifecycle.expiresAt,
     rating: summary?.rating ?? 4.8,
     jobs: summary?.completedJobs ?? 0,
     verified: summary?.verified ?? true,
@@ -913,35 +930,73 @@ export async function createMarketplaceRequest(
   return mapBrowseRequest(data as ServiceRequestRow, viewer);
 }
 
-export async function createMarketplaceAd(
-  sessionUser: Session['user'] | null | undefined,
-  draft: AdDraft,
-) {
-  const viewer = await ensureProfile(ensureSessionUser(sessionUser), 'provider');
+function sanitizeAdDraft(draft: AdDraft) {
+  const plan = getSponsoredAdPlan(draft.planId || 'starter_week');
+
+  return {
+    plan,
+    service: draft.service.trim(),
+    headline: draft.headline.trim(),
+    body: draft.body.trim(),
+    location: draft.location.trim() || 'Abuja',
+    startingPrice: draft.startingPrice.trim(),
+  };
+}
+
+export async function recordSponsoredAdPaymentIntent(input: {
+  reference: string;
+  user: SessionUser;
+  draft: AdDraft;
+}) {
+  const viewer = await ensureProfile(input.user, 'provider');
   const supabase = requireSupabase();
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('sponsored_ads')
-    .insert({
+  const sanitized = sanitizeAdDraft(input.draft);
+
+  if (!sanitized.service || !sanitized.headline || !sanitized.body || !sanitized.startingPrice) {
+    throw new Error('Add the ad service, headline, copy, and starting price before paying.');
+  }
+
+  const { error } = await supabase.from('paystack_transactions').upsert(
+    {
+      paystack_reference: input.reference,
+      customer_profile_id: viewer.id,
       provider_profile_id: viewer.id,
-      service: draft.service,
-      headline: draft.headline,
-      body: draft.body,
-      location: draft.location,
-      starting_price: draft.startingPrice,
-      budget: draft.budget,
-      badge: draft.badge || 'Sponsored',
-      active: true,
-      created_at: now,
-    })
-    .select('*')
-    .single();
+      provider_name_snapshot: viewer.full_name || viewer.email.split('@')[0] || 'Skopyr provider',
+      service_request_id: null,
+      title: `Sponsored ad: ${sanitized.headline}`,
+      category: `Sponsored ad:${sanitized.plan.id}`,
+      amount_kobo: sanitized.plan.priceKobo,
+      platform_fee_kobo: sanitized.plan.priceKobo,
+      total_amount_kobo: sanitized.plan.priceKobo,
+      status: 'initialized',
+      created_at: new Date().toISOString(),
+      verified_at: null,
+    },
+    {
+      onConflict: 'paystack_reference',
+    },
+  );
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return mapSponsoredAd(data as SponsoredAdRow, viewer);
+  return {
+    viewer,
+    plan: sanitized.plan,
+    draft: sanitized,
+  };
+}
+
+export async function createMarketplaceAd(
+  sessionUser: Session['user'] | null | undefined,
+  draft: AdDraft,
+) {
+  void sessionUser;
+  void draft;
+  throw new Error(
+    'Sponsored ads now require payment checkout. Start them from the provider dashboard.',
+  );
 }
 
 async function syncServiceRequestBidCount(serviceRequestId: string) {
@@ -1116,6 +1171,103 @@ export async function updateMarketplaceBid(
   return bids[0] || null;
 }
 
+export async function finalizeSponsoredAdPayment(
+  reference: string,
+  metadata?: Record<string, unknown> | null,
+) {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  const supabase = requireSupabase();
+  const { data: transaction, error: transactionError } = await supabase
+    .from('paystack_transactions')
+    .select('*')
+    .eq('paystack_reference', reference)
+    .single();
+
+  if (transactionError) {
+    throw new Error(transactionError.message);
+  }
+
+  const record = transaction as PaystackTransactionRow;
+
+  if (!record.category.startsWith('Sponsored ad:')) {
+    throw new Error('This payment reference does not belong to a sponsored ad purchase.');
+  }
+
+  if (record.status === 'verified') {
+    return null;
+  }
+
+  const providerId = record.provider_profile_id || record.customer_profile_id;
+  const providerProfiles = await fetchProfiles([providerId]);
+  const provider = providerProfiles.get(providerId);
+
+  if (!provider) {
+    throw new Error('Unable to find the provider for this sponsored ad payment.');
+  }
+
+  const adMetadata = metadata || {};
+  const draft = sanitizeAdDraft({
+    planId:
+      (typeof adMetadata.planId === 'string'
+        ? adMetadata.planId
+        : record.category.split(':')[1]) as AdDraft['planId'],
+    service: typeof adMetadata.service === 'string' ? adMetadata.service : 'Sponsored service',
+    headline:
+      typeof adMetadata.headline === 'string'
+        ? adMetadata.headline
+        : record.title.replace(/^Sponsored ad:\s*/i, ''),
+    body:
+      typeof adMetadata.body === 'string'
+        ? adMetadata.body
+        : 'Promoted across the Skopyr homepage and inbox surfaces.',
+    location: typeof adMetadata.location === 'string' ? adMetadata.location : 'Abuja',
+    startingPrice:
+      typeof adMetadata.startingPrice === 'string'
+        ? adMetadata.startingPrice
+        : formatNaira(Math.round(record.amount_kobo / 100)),
+    budget: '',
+    badge: '',
+  });
+  const window = buildSponsoredAdWindow(draft.plan.id);
+  const { data: inserted, error: insertError } = await supabase
+    .from('sponsored_ads')
+    .insert({
+      provider_profile_id: provider.id,
+      service: draft.service,
+      headline: draft.headline,
+      body: draft.body,
+      location: draft.location,
+      starting_price: draft.startingPrice,
+      budget: draft.plan.budgetLabel,
+      badge: draft.plan.badge,
+      active: true,
+      created_at: window.startsAt,
+    })
+    .select('*')
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  const { error: transactionUpdateError } = await supabase
+    .from('paystack_transactions')
+    .update({
+      status: 'verified',
+      verified_at: new Date().toISOString(),
+    })
+    .eq('paystack_reference', reference);
+
+  if (transactionUpdateError) {
+    throw new Error(transactionUpdateError.message);
+  }
+
+  return mapSponsoredAd(inserted as SponsoredAdRow, provider);
+}
+
 export async function toggleMarketplaceAd(
   sessionUser: Session['user'] | null | undefined,
   adId: string,
@@ -1133,9 +1285,19 @@ export async function toggleMarketplaceAd(
     throw new Error(readError.message);
   }
 
+  const existingRow = existing as SponsoredAdRow;
+  const plan = getSponsoredAdPlanFromBudgetLabel(existingRow.budget);
+
+  if (
+    plan.id !== 'legacy_featured' &&
+    isSponsoredAdExpired(buildSponsoredAdWindow(plan.id, existingRow.created_at).expiresAt)
+  ) {
+    throw new Error('This campaign has expired. Launch a new paid ad plan to go live again.');
+  }
+
   const { data, error } = await supabase
     .from('sponsored_ads')
-    .update({ active: !(existing as SponsoredAdRow).active })
+    .update({ active: !existingRow.active })
     .eq('id', adId)
     .select('*')
     .single();

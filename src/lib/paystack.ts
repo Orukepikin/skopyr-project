@@ -19,6 +19,7 @@ interface PaystackVerifyResponse {
   currency: string;
   channel: string;
   paid_at: string | null;
+  metadata?: Record<string, unknown>;
   customer: {
     email: string;
   };

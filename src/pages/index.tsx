@@ -12,6 +12,7 @@ import { SelectedCategory } from '@/lib/constants';
 import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
 import { useMarketplace } from '@/lib/marketplace-client';
 import {
+  type AdDraft,
   buildMarketplaceBids,
   type BidUpdateDraft,
   type MarketplaceBid,
@@ -23,6 +24,15 @@ type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse' | 'd
 
 const siteUrl = 'https://www.skopyr.com';
 const ACTIVE_REQUEST_STORAGE_KEY = 'skopyr:active-request-id';
+
+interface AdCheckoutPayload {
+  accessCode: string;
+  reference: string;
+  amount: number;
+  planId: string;
+  planName: string;
+  budgetLabel: string;
+}
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -273,6 +283,49 @@ export default function Home() {
     }
   };
 
+  const handleCreateAdCheckout = async (draft: AdDraft) => {
+    if (marketplace.mode === 'fallback') {
+      await marketplace.createAd(draft);
+      return { mode: 'created' as const };
+    }
+
+    const response = await fetch('/api/paystack/ads/initialize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(draft),
+    });
+    const payload = (await response.json()) as AdCheckoutPayload & { message?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.message || 'Unable to initialize the ad checkout.');
+    }
+
+    return {
+      mode: 'checkout' as const,
+      ...payload,
+    };
+  };
+
+  const handleVerifyAdPayment = async (reference: string) => {
+    if (marketplace.mode === 'fallback') {
+      return true;
+    }
+
+    const response = await fetch(
+      `/api/paystack/ads/verify?reference=${encodeURIComponent(reference)}`,
+    );
+    const payload = (await response.json()) as { verified?: boolean; message?: string };
+
+    if (!response.ok || !payload.verified) {
+      throw new Error(payload.message || 'Unable to verify the sponsored ad payment.');
+    }
+
+    await marketplace.refresh();
+    return true;
+  };
+
   const handleDashboardReply = async (role: DashboardRole, threadId: string, body: string) => {
     await marketplace.sendMessage({
       senderRole: role,
@@ -421,9 +474,8 @@ export default function Home() {
             void handleDashboardReply(role, threadId, body);
           }}
           onOpenThread={handleOpenThread}
-          onCreateAd={(draft) => {
-            void marketplace.createAd(draft);
-          }}
+          onCreateAd={handleCreateAdCheckout}
+          onVerifyAdPayment={handleVerifyAdPayment}
           onUpdateBid={(bidId, draft) => {
             void handleUpdateBid(bidId, draft);
           }}
