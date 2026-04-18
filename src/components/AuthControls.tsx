@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getProviders, signIn, signOut, useSession } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { isGoogleProviderAvailable } from '@/lib/googleAuth';
 import Button from './Button';
 
 interface Props {
@@ -9,21 +10,29 @@ interface Props {
 export default function AuthControls({ onBrowse }: Props) {
   const { data: session } = useSession();
   const [googleReady, setGoogleReady] = useState(false);
+  const [checkingGoogle, setCheckingGoogle] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
-    getProviders()
-      .then((providers) => {
-        if (active) {
-          setGoogleReady(Boolean(providers?.google));
+    isGoogleProviderAvailable()
+      .then((available) => {
+        if (!active) {
+          return;
         }
+
+        setGoogleReady(available);
       })
       .catch(() => {
         if (active) {
           setGoogleReady(false);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckingGoogle(false);
         }
       });
 
@@ -33,13 +42,20 @@ export default function AuthControls({ onBrowse }: Props) {
   }, []);
 
   const handleGoogleSignIn = async () => {
-    if (!googleReady) {
-      setMessage('Google login needs GOOGLE_ID and GOOGLE_SECRET in your environment variables.');
+    setLoading(true);
+    setMessage(null);
+
+    const ready = googleReady || (await isGoogleProviderAvailable().catch(() => false));
+
+    setGoogleReady(ready);
+    setCheckingGoogle(false);
+
+    if (!ready) {
+      setLoading(false);
+      setMessage("Google sign-in isn't available right now. Refresh and try again.");
       return;
     }
 
-    setLoading(true);
-    setMessage(null);
     await signIn('google');
   };
 
@@ -67,11 +83,16 @@ export default function AuthControls({ onBrowse }: Props) {
           </>
         ) : (
           <>
-            <Button variant="outline" size="sm" onClick={handleGoogleSignIn} disabled={loading}>
-              {loading ? 'Redirecting...' : 'Sign in with Google'}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGoogleSignIn}
+              disabled={loading || checkingGoogle}
+            >
+              {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Sign in with Google'}
             </Button>
-            <Button size="sm" onClick={handleGoogleSignIn} disabled={loading}>
-              Join as provider
+            <Button size="sm" onClick={handleGoogleSignIn} disabled={loading || checkingGoogle}>
+              {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Join as provider'}
             </Button>
           </>
         )}

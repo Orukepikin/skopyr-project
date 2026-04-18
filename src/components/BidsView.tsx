@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getProviders, signIn, useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { colors, fonts } from '@/lib/constants';
+import { isGoogleProviderAvailable } from '@/lib/googleAuth';
 import Button from './Button';
 
 interface Props {
@@ -91,6 +92,7 @@ export default function BidsView({ onBack, onHome }: Props) {
   const [paymentState, setPaymentState] = useState<PaymentState>('idle');
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
+  const [checkingGoogle, setCheckingGoogle] = useState(true);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setVisible(true), 50);
@@ -100,15 +102,22 @@ export default function BidsView({ onBack, onHome }: Props) {
   useEffect(() => {
     let active = true;
 
-    getProviders()
-      .then((providers) => {
-        if (active) {
-          setGoogleReady(Boolean(providers?.google));
+    isGoogleProviderAvailable()
+      .then((available) => {
+        if (!active) {
+          return;
         }
+
+        setGoogleReady(available);
       })
       .catch(() => {
         if (active) {
           setGoogleReady(false);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckingGoogle(false);
         }
       });
 
@@ -148,9 +157,17 @@ export default function BidsView({ onBack, onHome }: Props) {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!googleReady) {
+    setPaymentState('initializing');
+    setPaymentMessage(null);
+
+    const ready = googleReady || (await isGoogleProviderAvailable().catch(() => false));
+
+    setGoogleReady(ready);
+    setCheckingGoogle(false);
+
+    if (!ready) {
       setPaymentState('error');
-      setPaymentMessage('Google login needs GOOGLE_ID and GOOGLE_SECRET in your environment variables.');
+      setPaymentMessage("Google sign-in isn't available right now. Refresh and try again.");
       return;
     }
 
@@ -749,8 +766,14 @@ export default function BidsView({ onBack, onHome }: Props) {
             )}
 
             {!session?.user?.email ? (
-              <Button full onClick={handleGoogleSignIn}>
-                Sign in with Google to pay
+              <Button
+                full
+                onClick={handleGoogleSignIn}
+                disabled={checkingGoogle || paymentState === 'initializing'}
+              >
+                {checkingGoogle || paymentState === 'initializing'
+                  ? 'Checking Google...'
+                  : 'Sign in with Google to pay'}
               </Button>
             ) : paymentState === 'success' ? (
               <Button
