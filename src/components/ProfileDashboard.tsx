@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { colors, fonts } from '@/lib/constants';
 import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
@@ -69,6 +69,19 @@ interface StatCard {
   value: string;
   note: string;
 }
+
+const AD_FIELD_DEFINITIONS = [
+  { key: 'service', label: 'Service', placeholder: 'Generator repair' },
+  { key: 'headline', label: 'Headline', placeholder: 'Fast generator repair in Abuja' },
+  {
+    key: 'body',
+    label: 'Ad copy',
+    multiline: true,
+    placeholder: 'Tell buyers what makes your service worth contacting first.',
+  },
+  { key: 'location', label: 'Target area', placeholder: 'Abuja' },
+  { key: 'startingPrice', label: 'Starting price', placeholder: 'From NGN 15k' },
+] as const;
 
 function Panel({
   title,
@@ -230,8 +243,17 @@ export default function ProfileDashboard({
     'idle' | 'initializing' | 'verifying' | 'success' | 'error'
   >('idle');
   const [adPaymentMessage, setAdPaymentMessage] = useState<string | null>(null);
+  const adFieldRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
   const sponsoredPlans = SPONSORED_AD_PLANS.filter((plan) => plan.id !== 'legacy_featured');
   const selectedAdPlan = getSponsoredAdPlan(adDraft.planId || 'starter_week');
+  const missingAdFieldLabels = useMemo(
+    () =>
+      AD_FIELD_DEFINITIONS.filter(({ key }) => {
+        const value = adDraft[key as keyof AdDraft];
+        return typeof value !== 'string' || !value.trim();
+      }).map(({ label }) => label),
+    [adDraft],
+  );
 
   const messageThreads = role === 'provider' ? providerThreads : customerThreads;
 
@@ -376,14 +398,20 @@ export default function ProfileDashboard({
   const handleCreateAd = async () => {
     resetAdPaymentFeedback();
 
-    if (
-      !adDraft.service.trim() ||
-      !adDraft.headline.trim() ||
-      !adDraft.body.trim() ||
-      !adDraft.startingPrice.trim()
-    ) {
+    if (missingAdFieldLabels.length > 0) {
+      const firstMissingField = AD_FIELD_DEFINITIONS.find(({ label }) =>
+        missingAdFieldLabels.includes(label),
+      );
+      const firstMissingRef = firstMissingField
+        ? adFieldRefs.current[firstMissingField.key]
+        : null;
+
+      firstMissingRef?.focus();
+      firstMissingRef?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setAdPaymentState('error');
-      setAdPaymentMessage('Add the service, headline, copy, and starting price before checkout.');
+      setAdPaymentMessage(
+        `Complete these fields before checkout: ${missingAdFieldLabels.join(', ')}.`,
+      );
       return;
     }
 
@@ -1114,13 +1142,11 @@ export default function ProfileDashboard({
                     ))}
                   </div>
 
-                  {[
-                    { key: 'service', label: 'Service' },
-                    { key: 'headline', label: 'Headline' },
-                    { key: 'body', label: 'Ad copy', multiline: true },
-                    { key: 'location', label: 'Target area' },
-                    { key: 'startingPrice', label: 'Starting price' },
-                  ].map((field) => (
+                  {AD_FIELD_DEFINITIONS.map((field) => {
+                    const value = adDraft[field.key as keyof AdDraft] as string;
+                    const isMissing = !value.trim();
+
+                    return (
                     <div key={field.key} style={{ marginBottom: 12 }}>
                       <div
                         style={{
@@ -1135,17 +1161,21 @@ export default function ProfileDashboard({
                       >
                         {field.label}
                       </div>
-                      {field.multiline ? (
+                      {'multiline' in field && field.multiline ? (
                         <textarea
-                          value={adDraft[field.key as keyof AdDraft] as string}
+                          ref={(element) => {
+                            adFieldRefs.current[field.key] = element;
+                          }}
+                          value={value}
                           onChange={(event) =>
                             setAdDraft((current) => ({ ...current, [field.key]: event.target.value }))
                           }
+                          placeholder={field.placeholder}
                           style={{
                             width: '100%',
                             minHeight: 90,
                             background: colors.card,
-                            border: `1px solid ${colors.border}`,
+                            border: `1px solid ${isMissing && adPaymentState === 'error' ? 'rgba(248,113,113,0.45)' : colors.border}`,
                             borderRadius: 12,
                             padding: '12px 14px',
                             color: colors.text1,
@@ -1157,14 +1187,18 @@ export default function ProfileDashboard({
                         />
                       ) : (
                         <input
-                          value={adDraft[field.key as keyof AdDraft] as string}
+                          ref={(element) => {
+                            adFieldRefs.current[field.key] = element;
+                          }}
+                          value={value}
                           onChange={(event) =>
                             setAdDraft((current) => ({ ...current, [field.key]: event.target.value }))
                           }
+                          placeholder={field.placeholder}
                           style={{
                             width: '100%',
                             background: colors.card,
-                            border: `1px solid ${colors.border}`,
+                            border: `1px solid ${isMissing && adPaymentState === 'error' ? 'rgba(248,113,113,0.45)' : colors.border}`,
                             borderRadius: 12,
                             padding: '12px 14px',
                             color: colors.text1,
@@ -1174,8 +1208,21 @@ export default function ProfileDashboard({
                           }}
                         />
                       )}
+                      {isMissing && adPaymentState === 'error' && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            color: '#FCA5A5',
+                            marginTop: 6,
+                          }}
+                        >
+                          {field.label} is required before checkout.
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
 
                   <div
                     style={{
@@ -1202,7 +1249,12 @@ export default function ProfileDashboard({
                       style={{
                         fontSize: 12,
                         fontFamily: fonts.body,
-                        color: adPaymentState === 'success' ? colors.success : colors.text2,
+                        color:
+                          adPaymentState === 'success'
+                            ? colors.success
+                            : adPaymentState === 'error'
+                              ? '#FCA5A5'
+                              : colors.text2,
                         lineHeight: 1.6,
                         marginBottom: 12,
                       }}
@@ -1214,12 +1266,16 @@ export default function ProfileDashboard({
                   <Button
                     full
                     onClick={() => void handleCreateAd()}
-                    disabled={adPaymentState === 'initializing' || adPaymentState === 'verifying'}
+                    disabled={
+                      adPaymentState === 'initializing' || adPaymentState === 'verifying'
+                    }
                   >
                     {adPaymentState === 'initializing'
                       ? 'Opening Paystack...'
                       : adPaymentState === 'verifying'
                         ? 'Verifying payment...'
+                        : missingAdFieldLabels.length > 0
+                          ? 'Complete ad details to continue'
                         : `Pay ${formatNaira(selectedAdPlan.priceKobo / 100)} and launch`}
                   </Button>
                 </div>
