@@ -169,7 +169,7 @@ interface PaymentIntentInput {
   totalAmountKobo: number;
 }
 
-export type MarketplaceStateScope = 'public' | 'full';
+export type MarketplaceStateScope = 'public' | 'interactive' | 'full';
 
 function requireSupabase() {
   if (!isSupabaseConfigured()) {
@@ -831,6 +831,30 @@ export async function getMarketplaceState(
   const customerRequestIds = requestData.rows
     .filter((row) => row.customer_profile_id === viewer.id)
     .map((row) => row.id);
+
+  if (scope === 'interactive') {
+    const bidRows = await fetchRelevantBidRows(viewer.id, customerRequestIds);
+    const requestProfileMap = await fetchProfiles(
+      uniqueValues(requestData.rows.map((row) => row.customer_profile_id)),
+    );
+    const requestBidProfiles = await fetchProfiles(
+      uniqueValues(bidRows.map((row) => row.provider_profile_id)),
+    );
+    const requestRowMap = new Map(requestData.rows.map((row) => [row.id, row]));
+
+    state.requestBids = bidRows
+      .map((row) =>
+        mapMarketplaceBid(
+          row,
+          requestBidProfiles.get(row.provider_profile_id),
+          requestRowMap.get(row.service_request_id),
+          requestProfileMap.get(requestRowMap.get(row.service_request_id)?.customer_profile_id || ''),
+        ),
+      )
+      .filter((bid): bid is MarketplaceBid => Boolean(bid));
+
+    return state;
+  }
 
   const [threadRows, customerEscrows, providerEarnings, bidRows] = await Promise.all([
     fetchThreadRows(viewer.id),

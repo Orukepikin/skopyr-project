@@ -11,7 +11,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const session = await getServerSession(req, res, authOptions);
-    const scope = req.query.scope === 'public' ? 'public' : 'full';
+    const scope =
+      req.query.scope === 'public'
+        ? 'public'
+        : req.query.scope === 'interactive'
+          ? 'interactive'
+          : 'full';
     const state = await getMarketplaceState(session?.user, scope);
     return res.status(200).json({ state });
   } catch (error) {

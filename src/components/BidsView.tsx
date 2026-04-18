@@ -9,6 +9,8 @@ import Button from './Button';
 interface Props {
   request: BrowseRequest | null;
   bids: MarketplaceBid[];
+  canAct: boolean;
+  onRequireAuth: () => void | Promise<void>;
   onBack: () => void;
   onHome: () => void;
   onMessageProvider: (input: {
@@ -39,6 +41,8 @@ const PLATFORM_FEE_RATE = 0.1;
 export default function BidsView({
   request,
   bids,
+  canAct,
+  onRequireAuth,
   onBack,
   onHome,
   onMessageProvider,
@@ -49,6 +53,7 @@ export default function BidsView({
   const [checkoutBidId, setCheckoutBidId] = useState<string | null>(null);
   const [paymentState, setPaymentState] = useState<PaymentState>('idle');
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
   const [checkingGoogle, setCheckingGoogle] = useState(true);
 
@@ -101,6 +106,7 @@ export default function BidsView({
   };
 
   const openPaymentModal = (bidId: string) => {
+    setActionMessage(null);
     setCheckoutBidId(bidId);
     setSelected(bidId);
     resetPaymentFeedback();
@@ -385,6 +391,38 @@ export default function BidsView({
           These are real provider bids. Buyers can message each provider, compare quotes, and accept through escrow.
         </p>
 
+        {!canAct && (
+          <div
+            style={{
+              margin: '0 0 18px',
+              background: colors.accentDim,
+              border: `1px solid ${colors.accentBorder}`,
+              borderRadius: 14,
+              padding: '14px 16px',
+              fontSize: 13,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              lineHeight: 1.7,
+            }}
+          >
+            Sign in with Google first so your conversations and protected payments stay attached to your buyer profile.
+          </div>
+        )}
+
+        {actionMessage && (
+          <div
+            style={{
+              margin: '0 0 18px',
+              fontSize: 12,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              lineHeight: 1.6,
+            }}
+          >
+            {actionMessage}
+          </div>
+        )}
+
         {bids.length === 0 ? (
           <div
             style={{
@@ -573,9 +611,15 @@ export default function BidsView({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={(event: React.MouseEvent) => {
+                        onClick={async (event: React.MouseEvent) => {
                           event.stopPropagation();
-                          void onMessageProvider({
+                          if (!canAct) {
+                            setActionMessage('Sign in with Google to message providers from your bids.');
+                            await onRequireAuth();
+                            return;
+                          }
+
+                          await onMessageProvider({
                             providerProfileId: bid.providerProfileId,
                             providerName: bid.name,
                             category: request?.categoryName || 'Service request',
@@ -585,7 +629,7 @@ export default function BidsView({
                           });
                         }}
                       >
-                        Message
+                        {canAct ? 'Message' : 'Sign in to message'}
                       </Button>
                     </div>
                   </div>

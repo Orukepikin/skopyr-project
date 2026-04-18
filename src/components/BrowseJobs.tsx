@@ -12,6 +12,8 @@ interface Props {
   onBack: () => void;
   requests: BrowseRequest[];
   providerBidMap: Record<string, MarketplaceBid>;
+  canAct: boolean;
+  onRequireAuth: () => void | Promise<void>;
   onMessageRequester: (request: BrowseRequest) => void;
   onSubmitBid: (request: BrowseRequest, draft: BidUpdateDraft) => void | Promise<void>;
 }
@@ -36,6 +38,8 @@ export default function BrowseJobs({
   onBack,
   requests,
   providerBidMap,
+  canAct,
+  onRequireAuth,
   onMessageRequester,
   onSubmitBid,
 }: Props) {
@@ -56,6 +60,12 @@ export default function BrowseJobs({
   );
 
   const openBidModal = (request: BrowseRequest) => {
+    if (!canAct) {
+      setBidError('Sign in with Google to message requesters and send real provider bids.');
+      void onRequireAuth();
+      return;
+    }
+
     const existingBid = providerBidMap[request.id];
     const suggestedAmount = existingBid?.price || suggestBidAmount(request.budget);
 
@@ -162,6 +172,38 @@ export default function BrowseJobs({
         >
           Message requesters directly, send a real quote, and come back later to edit the same bid.
         </p>
+
+        {!canAct && (
+          <div
+            style={{
+              margin: '0 0 20px',
+              background: colors.accentDim,
+              border: `1px solid ${colors.accentBorder}`,
+              borderRadius: 14,
+              padding: '14px 16px',
+              fontSize: 13,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              lineHeight: 1.7,
+            }}
+          >
+            Sign in with Google first so your bids and buyer conversations are saved to your provider profile.
+          </div>
+        )}
+
+        {bidError && !editingRequestId && (
+          <div
+            style={{
+              margin: '0 0 16px',
+              fontSize: 12,
+              fontFamily: fonts.body,
+              color: '#FCA5A5',
+              lineHeight: 1.6,
+            }}
+          >
+            {bidError}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {requests.map((request, index) => {
@@ -305,10 +347,10 @@ export default function BrowseJobs({
                       }}
                     >
                       <Button size="sm" variant="ghost" onClick={() => onMessageRequester(request)}>
-                        Message requester
+                        {canAct ? 'Message requester' : 'Sign in to message'}
                       </Button>
                       <Button size="sm" onClick={() => openBidModal(request)}>
-                        {existingBid ? 'Edit your bid' : 'Send bid'}
+                        {existingBid ? 'Edit your bid' : canAct ? 'Send bid' : 'Sign in to bid'}
                       </Button>
                     </div>
                   </div>

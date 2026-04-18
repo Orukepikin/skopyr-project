@@ -18,6 +18,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const session = await getServerSession(req, res, authOptions);
+    if (!session?.user?.email) {
+      return res.status(401).json({
+        message: 'Sign in with Google before editing a bid.',
+      });
+    }
     const bid = await updateMarketplaceBid(session?.user, bidId, req.body as BidUpdateDraft);
     return res.status(200).json({ bid });
   } catch (error) {

@@ -12,6 +12,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const session = await getServerSession(req, res, authOptions);
+    if (!session?.user?.email) {
+      return res.status(401).json({
+        message: 'Sign in with Google before updating your profile role.',
+      });
+    }
     const rolePreference = await updateProfileRole(
       session?.user,
       (req.body as { role: AppRole }).role,

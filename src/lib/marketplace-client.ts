@@ -25,7 +25,7 @@ import {
 } from '@/lib/marketplace';
 
 type Mode = 'supabase' | 'fallback';
-type MarketplaceStateScope = 'public' | 'full';
+type MarketplaceStateScope = 'public' | 'interactive' | 'full';
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   const response = await fetch(input, init);
@@ -43,6 +43,41 @@ function mergePublicState(current: MarketplaceState, incoming: MarketplaceState)
     ...current,
     sponsoredAds: incoming.sponsoredAds,
     browseRequests: incoming.browseRequests,
+  };
+}
+
+function mergeBidIntoState(current: MarketplaceState, bid: MarketplaceBid): MarketplaceState {
+  const nextRequestBids = [
+    bid,
+    ...current.requestBids.filter((existingBid) => existingBid.id !== bid.id),
+  ];
+  const bidCount = nextRequestBids.filter(
+    (existingBid) => existingBid.serviceRequestId === bid.serviceRequestId,
+  ).length;
+  const providerSummary =
+    bidCount > 0
+      ? `${bidCount} provider${bidCount === 1 ? '' : 's'} submitted real bids`
+      : 'Waiting for provider bids';
+
+  return {
+    ...current,
+    requestBids: nextRequestBids,
+    browseRequests: current.browseRequests.map((request) =>
+      request.id === bid.serviceRequestId ? { ...request, bids: bidCount } : request,
+    ),
+    customerRequests: current.customerRequests.map((request) =>
+      request.id === bid.serviceRequestId
+        ? {
+            ...request,
+            bids: bidCount,
+            provider: providerSummary,
+          }
+        : request,
+    ),
+    providerLeads:
+      current.viewer?.id && bid.providerProfileId === current.viewer.id
+        ? current.providerLeads.filter((lead) => lead.id !== bid.serviceRequestId)
+        : current.providerLeads,
   };
 }
 
@@ -89,7 +124,7 @@ export function useMarketplace(
 
     try {
       const payload = await requestJson<{ state: MarketplaceState }>(
-        scope === 'public' ? '/api/marketplace?scope=public' : '/api/marketplace',
+        scope === 'full' ? '/api/marketplace' : `/api/marketplace?scope=${scope}`,
       );
       setState((current) => (scope === 'public' ? mergePublicState(current, payload.state) : payload.state));
       setError(null);
@@ -168,7 +203,7 @@ export function useMarketplace(
                 ]
               : current.customerRequests,
           }));
-          void refresh('full').catch(() => undefined);
+          void refresh('interactive').catch(() => undefined);
           return payload.request;
         },
         () => {
@@ -178,7 +213,7 @@ export function useMarketplace(
           return result.state.browseRequests.find((request) => request.id === result.requestId) || null;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const sendMessage = useCallback(
@@ -195,7 +230,16 @@ export function useMarketplace(
               body: JSON.stringify(input),
             },
           );
-          await refresh();
+          setState((current) => {
+            if (!current.viewer) {
+              return current;
+            }
+
+            return sendFallbackMessage(current, current.viewer, {
+              ...input,
+              threadId: payload.threadId,
+            }).state;
+          });
           return payload.threadId;
         },
         () => {
@@ -219,7 +263,7 @@ export function useMarketplace(
             },
             body: JSON.stringify({ threadId }),
           });
-          await refresh();
+          setState((current) => markFallbackThreadRead(current, role, threadId));
           return true;
         },
         () => {
@@ -253,7 +297,7 @@ export function useMarketplace(
           return true;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const createBid = useCallback(
@@ -270,7 +314,9 @@ export function useMarketplace(
               body: JSON.stringify(draft),
             },
           );
-          await refresh();
+          if (payload.bid) {
+            setState((current) => mergeBidIntoState(current, payload.bid as MarketplaceBid));
+          }
           return payload.bid;
         },
         () => {
@@ -280,7 +326,7 @@ export function useMarketplace(
           return result.state.requestBids.find((bid) => bid.id === result.bidId) || null;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const updateBid = useCallback(
@@ -297,7 +343,9 @@ export function useMarketplace(
               body: JSON.stringify(draft),
             },
           );
-          await refresh();
+          if (payload.bid) {
+            setState((current) => mergeBidIntoState(current, payload.bid as MarketplaceBid));
+          }
           return payload.bid;
         },
         () => {
@@ -307,7 +355,7 @@ export function useMarketplace(
           return result.state.requestBids.find((bid) => bid.id === result.bidId) || null;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const toggleAd = useCallback(
@@ -317,7 +365,7 @@ export function useMarketplace(
           await requestJson(`/api/marketplace/ads/${encodeURIComponent(adId)}`, {
             method: 'PATCH',
           });
-          await refresh();
+          setState((current) => toggleFallbackAd(current, adId));
           return true;
         },
         () => {
@@ -327,7 +375,7 @@ export function useMarketplace(
           return true;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   const setRolePreference = useCallback(
@@ -341,7 +389,7 @@ export function useMarketplace(
             },
             body: JSON.stringify({ role }),
           });
-          await refresh();
+          setState((current) => updateFallbackRole(current, role, current.viewer));
           return payload.rolePreference;
         },
         () => {
@@ -351,7 +399,7 @@ export function useMarketplace(
           return role;
         },
       ),
-    [fallbackState, mutate, refresh, setFallbackState],
+    [fallbackState, mutate, setFallbackState],
   );
 
   return {

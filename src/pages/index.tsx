@@ -65,7 +65,8 @@ export default function Home() {
   const [dashboardRole, setDashboardRole] = useState<DashboardRole>('customer');
   const [dashboardDetail, setDashboardDetail] = useState<DashboardDetail | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
-  const marketplaceScope = screen === 'browse' || screen === 'bids' || screen === 'dashboard' ? 'full' : 'public';
+  const marketplaceScope =
+    screen === 'dashboard' ? 'full' : screen === 'browse' || screen === 'bids' ? 'interactive' : 'public';
   const marketplace = useMarketplace(session?.user, marketplaceScope);
 
   const navigate = (nextScreen: Screen) => setScreen(nextScreen);
@@ -137,6 +138,14 @@ export default function Home() {
       navigate('bids');
     }
 
+    if (returnScreen === 'browse') {
+      navigate('browse');
+    }
+
+    if (returnScreen === 'home') {
+      navigate('home');
+    }
+
     if (returnScreen === 'form') {
       if (storedCategory) {
         setSelectedCategory(storedCategory);
@@ -153,6 +162,22 @@ export default function Home() {
     window.localStorage.removeItem('skopyr:return-screen');
     window.localStorage.removeItem('skopyr:return-role');
   }, [status]);
+
+  const promptGoogleSignIn = async (returnScreen: Screen, role?: DashboardRole) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem('skopyr:return-screen', returnScreen);
+
+    if (role) {
+      window.localStorage.setItem('skopyr:return-role', role);
+    } else {
+      window.localStorage.removeItem('skopyr:return-role');
+    }
+
+    await signIn('google');
+  };
 
   const activeRequest = useMemo(
     () =>
@@ -283,16 +308,32 @@ export default function Home() {
     body: string;
     serviceRequestId?: string | null;
   }) => {
-    const threadId = await marketplace.sendMessage({
-      senderRole: 'customer',
-      providerProfileId: input.providerProfileId,
-      subject: input.subject,
-      category: input.category,
-      body: input.body,
-      serviceRequestId: input.serviceRequestId,
-    });
+    if (!session?.user?.email) {
+      await promptGoogleSignIn(screen === 'bids' ? 'bids' : 'home', 'customer');
+      return;
+    }
 
-    navigateDashboard('customer', threadId ? { kind: 'message', id: threadId } : null);
+    try {
+      const threadId = await marketplace.sendMessage({
+        senderRole: 'customer',
+        providerProfileId: input.providerProfileId,
+        subject: input.subject,
+        category: input.category,
+        body: input.body,
+        serviceRequestId: input.serviceRequestId,
+      });
+
+      navigateDashboard('customer', threadId ? { kind: 'message', id: threadId } : null);
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('sign in with google')) {
+        await promptGoogleSignIn(screen === 'bids' ? 'bids' : 'home', 'customer');
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        window.alert(error instanceof Error ? error.message : 'Unable to open the conversation.');
+      }
+    }
   };
 
   const handleProviderToCustomerMessage = async (input: {
@@ -303,19 +344,40 @@ export default function Home() {
     body: string;
     serviceRequestId?: string | null;
   }) => {
-    const threadId = await marketplace.sendMessage({
-      senderRole: 'provider',
-      customerProfileId: input.requesterProfileId,
-      subject: input.subject,
-      category: input.category,
-      body: input.body,
-      serviceRequestId: input.serviceRequestId,
-    });
+    if (!session?.user?.email) {
+      await promptGoogleSignIn('browse', 'provider');
+      return;
+    }
 
-    navigateDashboard('provider', threadId ? { kind: 'message', id: threadId } : null);
+    try {
+      const threadId = await marketplace.sendMessage({
+        senderRole: 'provider',
+        customerProfileId: input.requesterProfileId,
+        subject: input.subject,
+        category: input.category,
+        body: input.body,
+        serviceRequestId: input.serviceRequestId,
+      });
+
+      navigateDashboard('provider', threadId ? { kind: 'message', id: threadId } : null);
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('sign in with google')) {
+        await promptGoogleSignIn('browse', 'provider');
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        window.alert(error instanceof Error ? error.message : 'Unable to message the requester.');
+      }
+    }
   };
 
   const handleCreateBid = async (requestId: string, draft: BidUpdateDraft) => {
+    if (!session?.user?.email) {
+      await promptGoogleSignIn('browse', 'provider');
+      return;
+    }
+
     const bid = await marketplace.createBid({
       serviceRequestId: requestId,
       amount: draft.amount,
@@ -408,8 +470,7 @@ export default function Home() {
       window.localStorage.setItem(RETURN_CATEGORY_STORAGE_KEY, JSON.stringify(selectedCategory));
     }
 
-    window.localStorage.setItem('skopyr:return-screen', 'form');
-    await signIn('google');
+    await promptGoogleSignIn('form');
   };
 
   const handleRoleChange = (nextRole: DashboardRole) => {
@@ -499,6 +560,8 @@ export default function Home() {
         <BidsView
           request={activeRequest}
           bids={liveBids}
+          canAct={Boolean(session?.user?.email)}
+          onRequireAuth={() => void promptGoogleSignIn('bids', 'customer')}
           onBack={() => navigate(selectedCategory ? 'form' : 'home')}
           onHome={() => navigate('home')}
           onMessageProvider={handleCustomerToProviderMessage}
@@ -509,6 +572,8 @@ export default function Home() {
           onBack={() => navigate('home')}
           requests={browseableRequests}
           providerBidMap={providerBidMap}
+          canAct={Boolean(session?.user?.email)}
+          onRequireAuth={() => void promptGoogleSignIn('browse', 'provider')}
           onSubmitBid={(request, draft) => void handleCreateBid(request.id, draft)}
           onMessageRequester={(request) =>
             void handleProviderToCustomerMessage({
