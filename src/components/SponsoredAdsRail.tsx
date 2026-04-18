@@ -5,10 +5,11 @@ import Button from './Button';
 interface Props {
   ads: SponsoredAd[];
   onMessageSponsor: (ad: SponsoredAd) => void;
+  compact?: boolean;
 }
 
-export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
-  const activeAds = ads.filter((ad) => ad.active).slice(0, 3);
+export default function SponsoredAdsRail({ ads, onMessageSponsor, compact = false }: Props) {
+  const activeAds = ads.filter((ad) => ad.active).slice(0, compact ? 1 : 3);
 
   if (activeAds.length === 0) {
     return null;
@@ -19,7 +20,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
       style={{
         width: '100%',
         maxWidth: 1120,
-        margin: '0 auto 28px',
+        margin: compact ? '0 auto 20px' : '0 auto 28px',
         position: 'relative',
         zIndex: 10,
       }}
@@ -27,8 +28,9 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
       <div
         style={{
           display: 'flex',
+          flexDirection: compact ? 'column' : 'row',
           justifyContent: 'space-between',
-          alignItems: 'flex-end',
+          alignItems: compact ? 'stretch' : 'flex-end',
           gap: 14,
           marginBottom: 16,
           flexWrap: 'wrap',
@@ -51,6 +53,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
           <div
             style={{
               fontSize: 18,
+              lineHeight: 1.3,
               fontFamily: fonts.display,
               color: colors.text1,
               fontWeight: 700,
@@ -64,7 +67,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
             fontSize: 13,
             fontFamily: fonts.body,
             color: colors.text2,
-            maxWidth: 340,
+            maxWidth: compact ? '100%' : 340,
             lineHeight: 1.6,
           }}
         >
@@ -75,7 +78,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gridTemplateColumns: compact ? '1fr' : 'repeat(auto-fit, minmax(260px, 1fr))',
           gap: 14,
         }}
       >
@@ -86,7 +89,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
               background: 'linear-gradient(135deg, rgba(255,107,43,0.16), rgba(255,255,255,0.03))',
               border: `1px solid ${colors.accentBorder}`,
               borderRadius: 20,
-              padding: 20,
+              padding: compact ? 18 : 20,
               boxShadow: '0 18px 50px rgba(0,0,0,0.2)',
             }}
           >
@@ -115,7 +118,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
                 </div>
                 <div
                   style={{
-                    fontSize: 22,
+                    fontSize: compact ? 19 : 22,
                     fontFamily: fonts.display,
                     color: colors.text1,
                     fontWeight: 700,
@@ -169,7 +172,7 @@ export default function SponsoredAdsRail({ ads, onMessageSponsor }: Props) {
               <span>{ad.location}</span>
             </div>
 
-            <Button size="sm" onClick={() => onMessageSponsor(ad)}>
+            <Button full={compact} size="sm" onClick={() => onMessageSponsor(ad)}>
               {ad.cta}
             </Button>
           </div>

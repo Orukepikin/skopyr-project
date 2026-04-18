@@ -7,9 +7,10 @@ import Button from './Button';
 interface Props {
   onBrowse: () => void;
   onDashboard: (role: DashboardRole) => void;
+  compact?: boolean;
 }
 
-export default function AuthControls({ onBrowse, onDashboard }: Props) {
+export default function AuthControls({ onBrowse, onDashboard, compact = false }: Props) {
   const { data: session } = useSession();
   const [googleReady, setGoogleReady] = useState(false);
   const [checkingGoogle, setCheckingGoogle] = useState(true);
@@ -69,22 +70,69 @@ export default function AuthControls({ onBrowse, onDashboard }: Props) {
     await signOut({ callbackUrl: '/' });
   };
 
+  const buttonStyle = compact
+    ? {
+        width: '100%',
+        minHeight: 42,
+        padding: '10px 12px',
+        lineHeight: 1.2,
+      }
+    : undefined;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <Button variant="ghost" size="sm" onClick={onBrowse}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: compact ? 'stretch' : 'flex-end',
+        gap: 10,
+        width: compact ? '100%' : 'auto',
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: compact ? 'repeat(2, minmax(0, 1fr))' : 'auto',
+          gap: 8,
+          justifyContent: compact ? 'stretch' : 'flex-end',
+          width: compact ? '100%' : 'auto',
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBrowse}
+          style={{
+            ...(compact ? { gridColumn: '1 / -1' } : null),
+            ...buttonStyle,
+          }}
+        >
           Browse jobs
         </Button>
 
         {session?.user ? (
           <>
-            <Button variant="outline" size="sm" disabled style={{ opacity: 1 }}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              style={{
+                opacity: 1,
+                ...(compact ? { gridColumn: '1 / -1' } : null),
+                ...buttonStyle,
+              }}
+            >
               {session.user.name || session.user.email || 'Signed in'}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDashboard('customer')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDashboard('customer')}
+              style={buttonStyle}
+            >
               My profile
             </Button>
-            <Button size="sm" onClick={handleSignOut} disabled={loading}>
+            <Button size="sm" onClick={handleSignOut} disabled={loading} style={buttonStyle}>
               {loading ? 'Signing out...' : 'Sign out'}
             </Button>
           </>
@@ -95,10 +143,16 @@ export default function AuthControls({ onBrowse, onDashboard }: Props) {
               size="sm"
               onClick={() => handleGoogleSignIn('customer')}
               disabled={loading || checkingGoogle}
+              style={buttonStyle}
             >
               {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Sign in with Google'}
             </Button>
-            <Button size="sm" onClick={() => handleGoogleSignIn('provider')} disabled={loading || checkingGoogle}>
+            <Button
+              size="sm"
+              onClick={() => handleGoogleSignIn('provider')}
+              disabled={loading || checkingGoogle}
+              style={buttonStyle}
+            >
               {loading ? 'Redirecting...' : checkingGoogle ? 'Checking Google...' : 'Join as provider'}
             </Button>
           </>
@@ -111,8 +165,8 @@ export default function AuthControls({ onBrowse, onDashboard }: Props) {
             color: 'rgba(255,255,255,0.72)',
             fontFamily: "'DM Sans', sans-serif",
             fontSize: 12,
-            maxWidth: 280,
-            textAlign: 'right',
+            maxWidth: compact ? '100%' : 280,
+            textAlign: compact ? 'center' : 'right',
           }}
         >
           {message}
