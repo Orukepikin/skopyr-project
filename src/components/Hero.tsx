@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { colors, fonts, categories } from '@/lib/constants';
 import type { DashboardRole } from '@/lib/dashboard';
 import type { SponsoredAd } from '@/lib/marketplace';
@@ -845,10 +846,16 @@ export default function Hero({ onPost, onBrowse, onDashboard, sponsoredAds, onMe
                 Copyright 2026 Kwaghhii Technology Solutions Ltd. All rights reserved.
               </div>
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-                {['Terms', 'Privacy', 'Contact'].map((link) => (
-                  <a
-                    key={link}
-                    href="#"
+                {[
+                  { label: 'How it works', href: '/how-it-works' },
+                  { label: 'For customers', href: '/for-customers' },
+                  { label: 'For providers', href: '/for-providers' },
+                  { label: 'Pricing', href: '/pricing' },
+                  { label: 'FAQ', href: '/faq' },
+                ].map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
                     style={{
                       fontSize: 13,
                       fontFamily: fonts.body,
@@ -863,8 +870,8 @@ export default function Hero({ onPost, onBrowse, onDashboard, sponsoredAds, onMe
                       e.currentTarget.style.color = colors.text3;
                     }}
                   >
-                    {link}
-                  </a>
+                    {link.label}
+                  </Link>
                 ))}
               </div>
             </div>

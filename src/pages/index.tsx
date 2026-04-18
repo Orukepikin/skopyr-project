@@ -245,11 +245,7 @@ export default function Home() {
           '@id': `${siteUrl}/#website`,
           url: siteUrl,
           name: 'Skopyr',
-          potentialAction: {
-            '@type': 'SearchAction',
-            target: `${siteUrl}/?q={search_term_string}`,
-            'query-input': 'required name=search_term_string',
-          },
+          alternateName: 'Skopyr Marketplace',
         },
         {
           '@type': 'Service',

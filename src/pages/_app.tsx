@@ -3,6 +3,7 @@ import Head from 'next/head';
 import type { Session } from 'next-auth';
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
+import SessionInactivityGuard from '@/components/SessionInactivityGuard';
 import '@/styles/globals.css';
 
 type SkopyrAppProps = AppProps<{
@@ -26,6 +27,7 @@ export default function App({ Component, pageProps }: SkopyrAppProps) {
 
   return (
     <SessionProvider session={pageProps.session}>
+      <SessionInactivityGuard />
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>

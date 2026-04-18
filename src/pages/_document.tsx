@@ -10,6 +10,7 @@ export default function Document() {
           content="Skopyr is the reverse marketplace for Abuja services. Buyers post jobs, providers compete, sponsored services stand out, and payments stay protected in escrow."
         />
         <meta name="theme-color" content="#0C0C0E" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

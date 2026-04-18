@@ -9,6 +9,31 @@ function createSitemap() {
       changefreq: 'daily',
       priority: '1.0',
     },
+    {
+      loc: `${siteUrl}/how-it-works`,
+      changefreq: 'weekly',
+      priority: '0.9',
+    },
+    {
+      loc: `${siteUrl}/for-customers`,
+      changefreq: 'weekly',
+      priority: '0.9',
+    },
+    {
+      loc: `${siteUrl}/for-providers`,
+      changefreq: 'weekly',
+      priority: '0.9',
+    },
+    {
+      loc: `${siteUrl}/pricing`,
+      changefreq: 'weekly',
+      priority: '0.8',
+    },
+    {
+      loc: `${siteUrl}/faq`,
+      changefreq: 'weekly',
+      priority: '0.8',
+    },
   ];
 
   return `<?xml version="1.0" encoding="UTF-8"?>
