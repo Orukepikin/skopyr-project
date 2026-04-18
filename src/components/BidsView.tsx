@@ -2,33 +2,26 @@ import { useEffect, useMemo, useState } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import { colors, fonts } from '@/lib/constants';
 import { isGoogleProviderAvailable } from '@/lib/googleAuth';
+import type { BrowseRequest, MarketplaceBid } from '@/lib/marketplace';
+import { formatNaira } from '@/lib/marketplace';
 import Button from './Button';
 
 interface Props {
+  request: BrowseRequest | null;
+  bids: MarketplaceBid[];
   onBack: () => void;
   onHome: () => void;
   onMessageProvider: (input: {
+    providerProfileId?: string | null;
     providerName: string;
     category: string;
     subject: string;
     body: string;
-  }) => void;
+    serviceRequestId?: string | null;
+  }) => void | Promise<void>;
 }
 
 type PaymentState = 'idle' | 'initializing' | 'verifying' | 'success' | 'error';
-
-interface Bid {
-  id: number;
-  name: string;
-  rating: number;
-  jobs: number;
-  price: number;
-  avatar: string;
-  verified: boolean;
-  msg: string;
-  eta: string;
-  time: string;
-}
 
 interface InitializePaymentResponse {
   accessCode?: string;
@@ -40,61 +33,20 @@ interface VerifyPaymentResponse {
   message?: string;
 }
 
-const BIDS: Bid[] = [
-  {
-    id: 1,
-    name: 'Chidi Okonkwo',
-    rating: 4.9,
-    jobs: 234,
-    price: 18000,
-    avatar: 'CO',
-    verified: true,
-    msg: 'Specialist in Mikano & Mantrac generators. Full toolkit, parts included. 30-day warranty.',
-    eta: 'Today 2PM',
-    time: '~2 hrs',
-  },
-  {
-    id: 2,
-    name: 'Amaka Eze',
-    rating: 4.7,
-    jobs: 156,
-    price: 15000,
-    avatar: 'AE',
-    verified: true,
-    msg: 'All brands covered. Price includes diagnostics and minor parts. Same-day service guaranteed.',
-    eta: 'Today 3:30PM',
-    time: '~3 hrs',
-  },
-  {
-    id: 3,
-    name: 'Ibrahim Musa',
-    rating: 4.8,
-    jobs: 312,
-    price: 22000,
-    avatar: 'IM',
-    verified: true,
-    msg: 'Master technician, 15 years experience. Premium express service with full warranty on all repairs.',
-    eta: 'Today 1PM',
-    time: '~1 hr',
-  },
-];
-
 const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 const PLATFORM_FEE_RATE = 0.1;
 
-function formatNaira(amount: number) {
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
+export default function BidsView({
+  request,
+  bids,
+  onBack,
+  onHome,
+  onMessageProvider,
+}: Props) {
   const { data: session } = useSession();
   const [visible, setVisible] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [checkoutBidId, setCheckoutBidId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [checkoutBidId, setCheckoutBidId] = useState<string | null>(null);
   const [paymentState, setPaymentState] = useState<PaymentState>('idle');
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
@@ -110,11 +62,9 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
 
     isGoogleProviderAvailable()
       .then((available) => {
-        if (!active) {
-          return;
+        if (active) {
+          setGoogleReady(available);
         }
-
-        setGoogleReady(available);
       })
       .catch(() => {
         if (active) {
@@ -133,8 +83,8 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
   }, []);
 
   const checkoutBid = useMemo(
-    () => BIDS.find((bid) => bid.id === checkoutBidId) ?? null,
-    [checkoutBidId]
+    () => bids.find((bid) => bid.id === checkoutBidId) ?? null,
+    [bids, checkoutBidId],
   );
 
   const pricing = checkoutBid
@@ -143,7 +93,6 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
         platformFee: Math.round(checkoutBid.price * PLATFORM_FEE_RATE),
       }
     : null;
-
   const totalAmount = pricing ? pricing.serviceFee + pricing.platformFee : 0;
 
   const resetPaymentFeedback = () => {
@@ -151,7 +100,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
     setPaymentMessage(null);
   };
 
-  const openPaymentModal = (bidId: number) => {
+  const openPaymentModal = (bidId: string) => {
     setCheckoutBidId(bidId);
     setSelected(bidId);
     resetPaymentFeedback();
@@ -182,7 +131,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
   };
 
   const handlePayment = async () => {
-    if (!checkoutBid || !pricing) {
+    if (!checkoutBid || !pricing || !request) {
       return;
     }
 
@@ -194,7 +143,9 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
 
     if (!PAYSTACK_PUBLIC_KEY) {
       setPaymentState('error');
-      setPaymentMessage('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is missing. Add it in Vercel and redeploy.');
+      setPaymentMessage(
+        'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is missing. Add it in Vercel and redeploy.',
+      );
       return;
     }
 
@@ -210,6 +161,10 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
         body: JSON.stringify({
           amount: totalAmount * 100,
           providerName: checkoutBid.name,
+          providerProfileId: checkoutBid.providerProfileId,
+          serviceRequestId: request.id,
+          title: request.title,
+          category: request.categoryName,
           bidId: checkoutBid.id,
         }),
       });
@@ -238,7 +193,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
             setPaymentMessage('Verifying your payment with Paystack...');
 
             const verifyResponse = await fetch(
-              `/api/paystack/verify?reference=${encodeURIComponent(transaction.reference)}`
+              `/api/paystack/verify?reference=${encodeURIComponent(transaction.reference)}`,
             );
             const verifyPayload = (await verifyResponse.json()) as VerifyPaymentResponse;
 
@@ -248,12 +203,12 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
 
             setPaymentState('success');
             setPaymentMessage(
-              `Payment verified for ${checkoutBid.name}. Your Paystack escrow is now active.`
+              `Payment verified for ${checkoutBid.name}. Your escrow and provider earnings record are now live.`,
             );
           } catch (error) {
             setPaymentState('error');
             setPaymentMessage(
-              error instanceof Error ? error.message : 'Unable to verify your payment.'
+              error instanceof Error ? error.message : 'Unable to verify your payment.',
             );
           }
         },
@@ -261,7 +216,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
     } catch (error) {
       setPaymentState('error');
       setPaymentMessage(
-        error instanceof Error ? error.message : 'Unable to start the Paystack checkout.'
+        error instanceof Error ? error.message : 'Unable to start the Paystack checkout.',
       );
     }
   };
@@ -300,7 +255,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
             fontWeight: 500,
           }}
         >
-          {'\u2190'} Back
+          {'<-'} Back
         </button>
 
         <div
@@ -333,7 +288,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                   marginBottom: 6,
                 }}
               >
-                {'Your request \u00B7 Live'}
+                {'Your request - Live'}
               </div>
               <div
                 style={{
@@ -344,7 +299,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                   letterSpacing: '-0.5px',
                 }}
               >
-                Generator not starting
+                {request?.title || 'Latest request'}
               </div>
               <div
                 style={{
@@ -357,10 +312,10 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                   flexWrap: 'wrap',
                 }}
               >
-                <span>{'\u26A1'} Generator</span>
-                <span>{'\uD83D\uDCCD'} Games Village</span>
-                <span>{'\uD83D\uDCB0'} {formatNaira(15000)} - {formatNaira(25000)}</span>
-                <span>{'\u23F0'} ASAP</span>
+                <span>{request?.categoryName || 'Service request'}</span>
+                <span>{request?.loc || 'Abuja'}</span>
+                <span>{request?.budget || 'Budget pending'}</span>
+                <span>{request?.when || 'ASAP'}</span>
               </div>
             </div>
             <div
@@ -389,7 +344,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                   display: 'inline-block',
                 }}
               />
-              3 bids
+              {bids.length} live bid{bids.length === 1 ? '' : 's'}
             </div>
           </div>
         </div>
@@ -417,7 +372,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
             letterSpacing: '-1px',
           }}
         >
-          Compare & pick
+          Compare and pick
         </h2>
         <p
           style={{
@@ -427,181 +382,205 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
             margin: '0 0 24px',
           }}
         >
-          Tap any bid to see details
+          These bids are generated from real provider ads and profiles, so messages and earnings can persist.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {BIDS.map((bid, index) => (
-            <div
-              key={bid.id}
-              onClick={() => setSelected(selected === bid.id ? null : bid.id)}
-              style={{
-                background: selected === bid.id ? colors.accentDim : colors.card,
-                border: `1px solid ${selected === bid.id ? colors.accentBorder : colors.border}`,
-                borderRadius: 16,
-                padding: 20,
-                cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                animation: `fadeUp 0.4s ease ${index * 0.08}s both`,
-              }}
-            >
+        {bids.length === 0 ? (
+          <div
+            style={{
+              background: colors.card,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 18,
+              padding: 24,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              lineHeight: 1.7,
+            }}
+          >
+            No providers have promoted this kind of service yet. Ask providers to run sponsored ads or browse the homepage ads to start a conversation.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {bids.map((bid, index) => (
               <div
+                key={bid.id}
+                onClick={() => setSelected(selected === bid.id ? null : bid.id)}
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 10,
-                      background: `linear-gradient(135deg, ${colors.accent}20, ${colors.accent}08)`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 14,
-                      fontFamily: fonts.display,
-                      fontWeight: 700,
-                      color: colors.accent,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {bid.avatar}
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span
-                        style={{
-                          fontSize: 15,
-                          fontFamily: fonts.body,
-                          fontWeight: 700,
-                          color: colors.text1,
-                        }}
-                      >
-                        {bid.name}
-                      </span>
-                      {bid.verified && (
-                        <span
-                          style={{
-                            fontSize: 9,
-                            fontFamily: fonts.body,
-                            fontWeight: 800,
-                            color: colors.success,
-                            background: 'rgba(34,197,94,0.1)',
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            letterSpacing: '0.5px',
-                          }}
-                        >
-                          VERIFIED
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, marginTop: 3, alignItems: 'center' }}>
-                      <span style={{ color: '#F59E0B', fontSize: 13 }}>
-                        {'\u2605'.repeat(Math.floor(bid.rating))}
-                      </span>
-                      <span
-                        style={{
-                          color: colors.text3,
-                          fontSize: 13,
-                          fontFamily: fonts.body,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {bid.rating}
-                      </span>
-                      <span style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
-                        {bid.jobs} jobs
-                      </span>
-                      <span style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
-                        {bid.time}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 22,
-                      fontFamily: fonts.display,
-                      fontWeight: 700,
-                      color: colors.text1,
-                      letterSpacing: '-0.5px',
-                    }}
-                  >
-                    {formatNaira(bid.price)}
-                  </div>
-                  <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
-                    {bid.eta}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  maxHeight: selected === bid.id ? 180 : 0,
-                  overflow: 'hidden',
-                  transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
-                  opacity: selected === bid.id ? 1 : 0,
+                  background: selected === bid.id ? colors.accentDim : colors.card,
+                  border: `1px solid ${selected === bid.id ? colors.accentBorder : colors.border}`,
+                  borderRadius: 16,
+                  padding: 20,
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease',
+                  animation: `fadeUp 0.4s ease ${index * 0.08}s both`,
                 }}
               >
                 <div
                   style={{
-                    marginTop: 16,
-                    paddingTop: 16,
-                    borderTop: `1px solid ${colors.border}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 12,
                   }}
                 >
-                  <p
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 10,
+                        background: `linear-gradient(135deg, ${colors.accent}20, ${colors.accent}08)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 14,
+                        fontFamily: fonts.display,
+                        fontWeight: 700,
+                        color: colors.accent,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {bid.avatar}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: 15,
+                            fontFamily: fonts.body,
+                            fontWeight: 700,
+                            color: colors.text1,
+                          }}
+                        >
+                          {bid.name}
+                        </span>
+                        {bid.verified && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontFamily: fonts.body,
+                              fontWeight: 800,
+                              color: colors.success,
+                              background: 'rgba(34,197,94,0.1)',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              letterSpacing: '0.5px',
+                            }}
+                          >
+                            VERIFIED
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#F59E0B', fontSize: 13 }}>
+                          {'*'.repeat(Math.max(1, Math.floor(bid.rating)))}
+                        </span>
+                        <span
+                          style={{
+                            color: colors.text3,
+                            fontSize: 13,
+                            fontFamily: fonts.body,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {bid.rating.toFixed(1)}
+                        </span>
+                        <span style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
+                          {bid.jobs} jobs
+                        </span>
+                        <span style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
+                          {bid.time}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 22,
+                        fontFamily: fonts.display,
+                        fontWeight: 700,
+                        color: colors.text1,
+                        letterSpacing: '-0.5px',
+                      }}
+                    >
+                      {formatNaira(bid.price)}
+                    </div>
+                    <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
+                      {bid.eta}
+                    </div>
+                    <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
+                      {bid.location}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    maxHeight: selected === bid.id ? 220 : 0,
+                    overflow: 'hidden',
+                    transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+                    opacity: selected === bid.id ? 1 : 0,
+                  }}
+                >
+                  <div
                     style={{
-                      fontSize: 13,
-                      fontFamily: fonts.body,
-                      color: colors.text2,
-                      lineHeight: 1.6,
-                      margin: '0 0 14px',
-                      fontStyle: 'italic',
+                      marginTop: 16,
+                      paddingTop: 16,
+                      borderTop: `1px solid ${colors.border}`,
                     }}
                   >
-                    {`\u201C${bid.msg}\u201D`}
-                  </p>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button
-                      size="sm"
-                      onClick={(event: React.MouseEvent) => {
-                        event.stopPropagation();
-                        openPaymentModal(bid.id);
+                    <p
+                      style={{
+                        fontSize: 13,
+                        fontFamily: fonts.body,
+                        color: colors.text2,
+                        lineHeight: 1.6,
+                        margin: '0 0 14px',
+                        fontStyle: 'italic',
                       }}
                     >
-                      Accept this bid
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(event: React.MouseEvent) => {
-                        event.stopPropagation();
-                        onMessageProvider({
-                          providerName: bid.name,
-                          category: 'Generator repair',
-                          subject: 'Generator not starting',
-                          body: `Hi ${bid.name.split(' ')[0]}, I want to ask a few questions about your bid before I accept it.`,
-                        });
-                      }}
-                    >
-                      Message
-                    </Button>
+                      {'"'}
+                      {bid.msg}
+                      {'"'}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <Button
+                        size="sm"
+                        onClick={(event: React.MouseEvent) => {
+                          event.stopPropagation();
+                          openPaymentModal(bid.id);
+                        }}
+                      >
+                        Accept this bid
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event: React.MouseEvent) => {
+                          event.stopPropagation();
+                          void onMessageProvider({
+                            providerProfileId: bid.providerProfileId,
+                            providerName: bid.name,
+                            category: request?.categoryName || 'Service request',
+                            subject: request?.title || 'New service enquiry',
+                            serviceRequestId: request?.id,
+                            body: `Hi ${bid.name.split(' ')[0]}, I want to ask a few questions about your bid before I accept it.`,
+                          });
+                        }}
+                      >
+                        Message
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {checkoutBid && pricing && (
+      {checkoutBid && pricing && request && (
         <div
           style={{
             position: 'fixed',
@@ -628,7 +607,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
             }}
           >
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>{'\uD83D\uDD12'}</div>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>{'LOCK'}</div>
               <h3
                 style={{
                   fontSize: 22,
@@ -639,7 +618,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                   letterSpacing: '-0.5px',
                 }}
               >
-                Confirm & pay
+                Confirm and pay
               </h3>
               <p style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, margin: 0 }}>
                 Held in escrow until job is complete
@@ -681,6 +660,10 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                 <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2 }}>
                   {checkoutBid.time}
                 </div>
+              </div>
+
+              <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text2, marginBottom: 14 }}>
+                {request.title} - {request.loc}
               </div>
 
               {[
@@ -840,7 +823,7 @@ export default function BidsView({ onBack, onHome, onMessageProvider }: Props) {
                 lineHeight: 1.5,
               }}
             >
-              {'Escrow \u2192 Job done \u2192 You confirm \u2192 Provider paid'}
+              {'Escrow -> Job done -> You confirm -> Provider paid'}
             </p>
           </div>
         </div>

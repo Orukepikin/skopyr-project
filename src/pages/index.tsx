@@ -10,25 +10,26 @@ import BrowseJobs from '@/components/BrowseJobs';
 import ProfileDashboard from '@/components/ProfileDashboard';
 import { SelectedCategory } from '@/lib/constants';
 import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
+import { useMarketplace } from '@/lib/marketplace-client';
 import {
-  addCustomerProviderMessage,
-  addSponsoredAd,
-  createThreadKey,
-  toggleSponsoredAd,
-  useMarketplaceState,
+  buildMarketplaceBids,
+  type RequestDraft,
+  type SponsoredAd,
 } from '@/lib/marketplace';
 
 type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse' | 'dashboard';
 
 const siteUrl = 'https://www.skopyr.com';
+const ACTIVE_REQUEST_STORAGE_KEY = 'skopyr:active-request-id';
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const marketplace = useMarketplace(session?.user);
   const [screen, setScreen] = useState<Screen>('splash');
   const [selectedCategory, setSelectedCategory] = useState<SelectedCategory | null>(null);
   const [dashboardRole, setDashboardRole] = useState<DashboardRole>('customer');
   const [dashboardDetail, setDashboardDetail] = useState<DashboardDetail | null>(null);
-  const [marketplaceState, setMarketplaceState] = useMarketplaceState();
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
 
   const navigate = (nextScreen: Screen) => setScreen(nextScreen);
   const navigateDashboard = (role: DashboardRole, detail: DashboardDetail | null = null) => {
@@ -38,7 +39,38 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (status !== 'authenticated') {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedRequestId = window.localStorage.getItem(ACTIVE_REQUEST_STORAGE_KEY);
+
+    if (storedRequestId) {
+      setActiveRequestId(storedRequestId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (activeRequestId) {
+      window.localStorage.setItem(ACTIVE_REQUEST_STORAGE_KEY, activeRequestId);
+      return;
+    }
+
+    window.localStorage.removeItem(ACTIVE_REQUEST_STORAGE_KEY);
+  }, [activeRequestId]);
+
+  useEffect(() => {
+    if (marketplace.state.viewer?.rolePreference) {
+      setDashboardRole(marketplace.state.viewer.rolePreference);
+    }
+  }, [marketplace.state.viewer?.rolePreference]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || typeof window === 'undefined') {
       return;
     }
 
@@ -57,6 +89,38 @@ export default function Home() {
     window.localStorage.removeItem('skopyr:return-role');
   }, [status]);
 
+  const activeRequest = useMemo(
+    () =>
+      marketplace.state.browseRequests.find((request) => request.id === activeRequestId) ??
+      (marketplace.state.viewer
+        ? marketplace.state.browseRequests.find(
+            (request) => request.requesterProfileId === marketplace.state.viewer?.id,
+          ) ?? null
+        : null),
+    [activeRequestId, marketplace.state.browseRequests, marketplace.state.viewer],
+  );
+
+  const liveBids = useMemo(
+    () => buildMarketplaceBids(activeRequest, marketplace.state.sponsoredAds),
+    [activeRequest, marketplace.state.sponsoredAds],
+  );
+
+  const providerOwnedAds = useMemo(
+    () =>
+      marketplace.state.sponsoredAds.filter(
+        (ad) => ad.providerProfileId && ad.providerProfileId === marketplace.state.viewer?.id,
+      ),
+    [marketplace.state.sponsoredAds, marketplace.state.viewer?.id],
+  );
+
+  const browseableRequests = useMemo(
+    () =>
+      marketplace.state.browseRequests.filter(
+        (request) => request.requesterProfileId !== marketplace.state.viewer?.id,
+      ),
+    [marketplace.state.browseRequests, marketplace.state.viewer?.id],
+  );
+
   const seoJsonLd = useMemo(
     () => ({
       '@context': 'https://schema.org',
@@ -67,7 +131,7 @@ export default function Home() {
           name: 'Skopyr',
           url: siteUrl,
           description:
-            'Skopyr is a reverse marketplace in Abuja where buyers post service requests, providers compete, and payments are protected with escrow.',
+            'Skopyr is a reverse marketplace in Abuja where buyers post service requests, providers promote services, message directly, and payments stay protected with escrow.',
         },
         {
           '@type': 'WebSite',
@@ -103,99 +167,96 @@ export default function Home() {
               name: 'How do buyers and providers message each other on Skopyr?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Buyers can message providers from bids and sponsored service cards, while providers can message requesters from open jobs and their dashboard inbox.',
+                text: 'Buyers can message providers from bids and sponsored service cards, while providers can message buyers from live requests and their profile inbox. Every conversation syncs into both sides of the dashboard.',
               },
             },
             {
               '@type': 'Question',
-              name: 'How do sponsored ads work on Skopyr?',
+              name: 'How do provider ads work on Skopyr?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Providers can launch sponsored campaigns from their dashboard so their services appear in premium homepage placements with a direct message call to action.',
+                text: 'Providers can launch sponsored ads from their dashboard so their services appear above the fold on the homepage and drive direct message conversations.',
+              },
+            },
+            {
+              '@type': 'Question',
+              name: 'How are provider earnings tracked?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'When a buyer accepts a real provider bid and pays through Paystack, Skopyr creates an escrow record for the buyer and a matching earnings record for the provider dashboard.',
               },
             },
           ],
         },
       ],
     }),
-    []
+    [],
   );
 
-  const handleCustomerToProviderMessage = (input: {
+  const handleCustomerToProviderMessage = async (input: {
+    providerProfileId?: string | null;
     providerName: string;
     category: string;
     subject: string;
     body: string;
+    serviceRequestId?: string | null;
   }) => {
-    const requesterName = session?.user?.name || 'Buyer';
-    const threadKey = createThreadKey(input.subject, input.providerName);
-    let nextThreadId = '';
-
-    setMarketplaceState((current) => {
-      const next = addCustomerProviderMessage(current, {
-        ...input,
-        requesterName,
-        senderRole: 'customer',
-      });
-      nextThreadId = next.customerThreads.find((thread) => thread.threadKey === threadKey)?.id || '';
-      return next;
+    const threadId = await marketplace.sendMessage({
+      senderRole: 'customer',
+      providerProfileId: input.providerProfileId,
+      subject: input.subject,
+      category: input.category,
+      body: input.body,
+      serviceRequestId: input.serviceRequestId,
     });
 
-    navigateDashboard('customer', nextThreadId ? { kind: 'message', id: nextThreadId } : null);
+    navigateDashboard('customer', threadId ? { kind: 'message', id: threadId } : null);
   };
 
-  const handleProviderToCustomerMessage = (input: {
+  const handleProviderToCustomerMessage = async (input: {
     requesterName: string;
+    requesterProfileId?: string | null;
     category: string;
     subject: string;
     body: string;
+    serviceRequestId?: string | null;
   }) => {
-    const providerName = session?.user?.name || 'Provider';
-    const threadKey = createThreadKey(input.subject, providerName);
-    let nextThreadId = '';
-
-    setMarketplaceState((current) => {
-      const next = addCustomerProviderMessage(current, {
-        ...input,
-        providerName,
-        senderRole: 'provider',
-      });
-      nextThreadId = next.providerThreads.find((thread) => thread.threadKey === threadKey)?.id || '';
-      return next;
+    const threadId = await marketplace.sendMessage({
+      senderRole: 'provider',
+      customerProfileId: input.requesterProfileId,
+      subject: input.subject,
+      category: input.category,
+      body: input.body,
+      serviceRequestId: input.serviceRequestId,
     });
 
-    navigateDashboard('provider', nextThreadId ? { kind: 'message', id: nextThreadId } : null);
+    navigateDashboard('provider', threadId ? { kind: 'message', id: threadId } : null);
   };
 
-  const handleDashboardReply = (role: DashboardRole, threadId: string, body: string) => {
-    setMarketplaceState((current) => {
-      const threads = role === 'provider' ? current.providerThreads : current.customerThreads;
-      const activeThread = threads.find((thread) => thread.id === threadId);
-
-      if (!activeThread) {
-        return current;
-      }
-
-      if (role === 'provider') {
-        return addCustomerProviderMessage(current, {
-          providerName: session?.user?.name || 'Provider',
-          requesterName: activeThread.counterpart,
-          category: activeThread.category,
-          subject: activeThread.subject,
-          body,
-          senderRole: 'provider',
-        });
-      }
-
-      return addCustomerProviderMessage(current, {
-        providerName: activeThread.counterpart,
-        requesterName: session?.user?.name || 'Buyer',
-        category: activeThread.category,
-        subject: activeThread.subject,
-        body,
-        senderRole: 'customer',
-      });
+  const handleDashboardReply = async (role: DashboardRole, threadId: string, body: string) => {
+    await marketplace.sendMessage({
+      senderRole: role,
+      threadId,
+      body,
     });
+  };
+
+  const handleCreateRequest = async (draft: RequestDraft) => {
+    const request = await marketplace.createRequest(draft);
+
+    if (request?.id) {
+      setActiveRequestId(request.id);
+      setScreen('bids');
+    }
+  };
+
+  const handleRoleChange = (nextRole: DashboardRole) => {
+    setDashboardRole(nextRole);
+    void marketplace.setRolePreference(nextRole);
+  };
+
+  const handleOpenThread = (role: DashboardRole, threadId: string) => {
+    void marketplace.markThreadRead(role, threadId);
   };
 
   return (
@@ -204,7 +265,7 @@ export default function Home() {
         <title>Skopyr | Hire trusted service providers in Abuja</title>
         <meta
           name="description"
-          content="Skopyr helps buyers in Abuja post jobs, message trusted providers, compare bids, run protected escrow payments, and discover sponsored services that stand out."
+          content="Skopyr helps buyers in Abuja post jobs, message trusted providers, compare real provider bids, run protected escrow payments, and discover sponsored services that stand out."
         />
         <meta
           name="robots"
@@ -212,14 +273,14 @@ export default function Home() {
         />
         <meta
           name="keywords"
-          content="Abuja service providers, reverse marketplace Nigeria, generator repair Abuja, plumbers Abuja, AC repair Abuja, sponsored service ads"
+          content="Abuja service providers, reverse marketplace Nigeria, generator repair Abuja, plumbers Abuja, AC repair Abuja, sponsored service ads, provider earnings"
         />
         <link rel="canonical" href={siteUrl} />
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Skopyr | Hire trusted service providers in Abuja" />
         <meta
           property="og:description"
-          content="Post what you need, message providers directly, compare bids, and promote your services with premium sponsored placements on Skopyr."
+          content="Post what you need, message providers directly, compare live provider bids, and promote your services with premium sponsored placements on Skopyr."
         />
         <meta property="og:url" content={siteUrl} />
         <meta property="og:site_name" content="Skopyr" />
@@ -227,7 +288,7 @@ export default function Home() {
         <meta name="twitter:title" content="Skopyr | Hire trusted service providers in Abuja" />
         <meta
           name="twitter:description"
-          content="Buyers and providers can message each other, pay through escrow, and launch sponsored service ads that appear above the fold."
+          content="Buyers and providers can message each other, pay through escrow, and launch sponsored ads that appear above the fold."
         />
         <script
           type="application/ld+json"
@@ -241,9 +302,10 @@ export default function Home() {
           onPost={() => navigate('categories')}
           onBrowse={() => navigate('browse')}
           onDashboard={(role) => navigateDashboard(role)}
-          sponsoredAds={marketplaceState.sponsoredAds}
-          onMessageSponsor={(ad) =>
-            handleCustomerToProviderMessage({
+          sponsoredAds={marketplace.state.sponsoredAds}
+          onMessageSponsor={(ad: SponsoredAd) =>
+            void handleCustomerToProviderMessage({
+              providerProfileId: ad.providerProfileId,
               providerName: ad.providerName,
               category: ad.service,
               subject: `${ad.service} enquiry`,
@@ -264,13 +326,15 @@ export default function Home() {
       {screen === 'form' && selectedCategory && (
         <RequestForm
           category={selectedCategory}
-          onSubmit={() => navigate('bids')}
+          onSubmit={handleCreateRequest}
           onBack={() => navigate('categories')}
         />
       )}
       {screen === 'bids' && (
         <BidsView
-          onBack={() => navigate('form')}
+          request={activeRequest}
+          bids={liveBids}
+          onBack={() => navigate(selectedCategory ? 'form' : 'home')}
           onHome={() => navigate('home')}
           onMessageProvider={handleCustomerToProviderMessage}
         />
@@ -278,12 +342,14 @@ export default function Home() {
       {screen === 'browse' && (
         <BrowseJobs
           onBack={() => navigate('home')}
-          requests={marketplaceState.browseRequests}
+          requests={browseableRequests}
           onMessageRequester={(request) =>
-            handleProviderToCustomerMessage({
+            void handleProviderToCustomerMessage({
               requesterName: request.requester,
-              category: request.title,
+              requesterProfileId: request.requesterProfileId,
+              category: request.categoryName,
               subject: request.title,
+              serviceRequestId: request.id,
               body: `Hi ${request.requester.split(' ')[0]}, I saw your request for "${request.title}" and I can help. Can I ask a few quick questions before I send my final bid?`,
             })
           }
@@ -292,21 +358,31 @@ export default function Home() {
       {screen === 'dashboard' && (
         <ProfileDashboard
           role={dashboardRole}
-          userName={session?.user?.name}
-          userEmail={session?.user?.email}
-          customerThreads={marketplaceState.customerThreads}
-          providerThreads={marketplaceState.providerThreads}
-          sponsoredAds={marketplaceState.sponsoredAds}
+          userName={marketplace.state.viewer?.name || session?.user?.name}
+          userEmail={marketplace.state.viewer?.email || session?.user?.email}
+          customerThreads={marketplace.state.customerThreads}
+          providerThreads={marketplace.state.providerThreads}
+          sponsoredAds={providerOwnedAds}
+          customerRequests={marketplace.state.customerRequests}
+          providerLeads={marketplace.state.providerLeads}
+          customerEscrows={marketplace.state.customerEscrows}
+          providerBalance={marketplace.state.providerBalance}
+          providerPayouts={marketplace.state.providerPayouts}
           initialDetail={dashboardDetail}
-          onRoleChange={setDashboardRole}
+          onRoleChange={handleRoleChange}
           onHome={() => navigate('home')}
           onBrowse={() => navigate('browse')}
           onPost={() => navigate('categories')}
-          onSendMessage={handleDashboardReply}
-          onCreateAd={(draft) =>
-            setMarketplaceState((current) => addSponsoredAd(current, session?.user?.name || 'Featured provider', draft))
-          }
-          onToggleAd={(adId) => setMarketplaceState((current) => toggleSponsoredAd(current, adId))}
+          onSendMessage={(role, threadId, body) => {
+            void handleDashboardReply(role, threadId, body);
+          }}
+          onOpenThread={handleOpenThread}
+          onCreateAd={(draft) => {
+            void marketplace.createAd(draft);
+          }}
+          onToggleAd={(adId) => {
+            void marketplace.toggleAd(adId);
+          }}
           onClearInitialDetail={() => setDashboardDetail(null)}
         />
       )}

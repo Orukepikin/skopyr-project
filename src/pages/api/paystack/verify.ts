@@ -1,4 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { finalizeVerifiedPayment } from '@/lib/marketplace-server';
 import { verifyPaystackTransaction } from '@/lib/paystack';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -14,6 +17,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const session = await getServerSession(req, res, authOptions);
+
+    if (!session?.user?.email) {
+      return res.status(401).json({ message: 'Sign in before verifying a payment.' });
+    }
+
     const response = await verifyPaystackTransaction(reference);
 
     if (response.data.status !== 'success') {
@@ -21,6 +30,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         message: `Payment has not completed successfully. Current status: ${response.data.status}.`,
       });
     }
+
+    await finalizeVerifiedPayment(reference);
 
     return res.status(200).json({
       verified: true,
