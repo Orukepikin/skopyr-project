@@ -456,7 +456,7 @@ export default function ProfileDashboard({
   const [visible, setVisible] = useState(false);
   const [customerThreads, setCustomerThreads] = useState(CUSTOMER_MESSAGES);
   const [providerThreads, setProviderThreads] = useState(PROVIDER_MESSAGES);
-  const [activeDetail, setActiveDetail] = useState<DetailState>({ kind: 'message', id: CUSTOMER_MESSAGES[0].id });
+  const [activeDetail, setActiveDetail] = useState<DetailState | null>(null);
   const [draftReply, setDraftReply] = useState('');
 
   useEffect(() => {
@@ -466,7 +466,7 @@ export default function ProfileDashboard({
 
   useEffect(() => {
     setDraftReply('');
-    setActiveDetail(role === 'provider' ? { kind: 'message', id: PROVIDER_MESSAGES[0].id } : { kind: 'message', id: CUSTOMER_MESSAGES[0].id });
+    setActiveDetail(null);
   }, [role]);
 
   const stats = role === 'provider' ? PROVIDER_STATS : CUSTOMER_STATS;
@@ -498,8 +498,13 @@ export default function ProfileDashboard({
     setDraftReply('');
   };
 
+  const closeDetail = () => {
+    setActiveDetail(null);
+    setDraftReply('');
+  };
+
   const handleSendReply = () => {
-    if (activeDetail.kind !== 'message' || !draftReply.trim()) {
+    if (activeDetail?.kind !== 'message' || !draftReply.trim()) {
       return;
     }
 
@@ -534,19 +539,19 @@ export default function ProfileDashboard({
     setDraftReply('');
   };
 
-  const activeMessage = activeDetail.kind === 'message'
+  const activeMessage = activeDetail?.kind === 'message'
     ? messageThreads.find((thread) => thread.id === activeDetail.id) ?? null
     : null;
-  const activeRequest = activeDetail.kind === 'request'
+  const activeRequest = activeDetail?.kind === 'request'
     ? CUSTOMER_REQUESTS.find((request) => request.id === activeDetail.id) ?? null
     : null;
-  const activeLead = activeDetail.kind === 'lead'
+  const activeLead = activeDetail?.kind === 'lead'
     ? PROVIDER_LEADS.find((lead) => lead.id === activeDetail.id) ?? null
     : null;
-  const activeEscrow = activeDetail.kind === 'escrow'
+  const activeEscrow = activeDetail?.kind === 'escrow'
     ? CUSTOMER_ESCROWS.find((escrow) => escrow.id === activeDetail.id) ?? null
     : null;
-  const activePayout = activeDetail.kind === 'payout'
+  const activePayout = activeDetail?.kind === 'payout'
     ? PAYOUTS.find((payout) => payout.id === activeDetail.id) ?? null
     : null;
 
@@ -860,7 +865,7 @@ export default function ProfileDashboard({
                       key={lead.id}
                       type="button"
                       onClick={() => setActiveDetail({ kind: 'lead', id: lead.id })}
-                      style={getClickableCardStyle(activeDetail.kind === 'lead' && activeDetail.id === lead.id)}
+                      style={getClickableCardStyle(activeDetail?.kind === 'lead' && activeDetail.id === lead.id)}
                     >
                       <div
                         style={{
@@ -937,7 +942,7 @@ export default function ProfileDashboard({
                       key={request.id}
                       type="button"
                       onClick={() => setActiveDetail({ kind: 'request', id: request.id })}
-                      style={getClickableCardStyle(activeDetail.kind === 'request' && activeDetail.id === request.id)}
+                      style={getClickableCardStyle(activeDetail?.kind === 'request' && activeDetail.id === request.id)}
                     >
                       <div
                         style={{
@@ -1022,7 +1027,7 @@ export default function ProfileDashboard({
                   key={message.id}
                   type="button"
                   onClick={() => openMessage(message.id)}
-                  style={getClickableCardStyle(activeDetail.kind === 'message' && activeDetail.id === message.id)}
+                  style={getClickableCardStyle(activeDetail?.kind === 'message' && activeDetail.id === message.id)}
                 >
                   <div
                     style={{
@@ -1102,8 +1107,8 @@ export default function ProfileDashboard({
                 type="button"
                 onClick={() => setActiveDetail({ kind: 'balance' })}
                 style={{
-                  ...getClickableCardStyle(activeDetail.kind === 'balance'),
-                  background: activeDetail.kind === 'balance' ? 'rgba(255,107,43,0.12)' : 'rgba(255,107,43,0.08)',
+                  ...getClickableCardStyle(activeDetail?.kind === 'balance'),
+                  background: activeDetail?.kind === 'balance' ? 'rgba(255,107,43,0.12)' : 'rgba(255,107,43,0.08)',
                   marginBottom: 16,
                 }}
               >
@@ -1160,7 +1165,7 @@ export default function ProfileDashboard({
                     type="button"
                     onClick={() => setActiveDetail({ kind: 'payout', id: payout.id })}
                     style={{
-                      ...getClickableCardStyle(activeDetail.kind === 'payout' && activeDetail.id === payout.id),
+                      ...getClickableCardStyle(activeDetail?.kind === 'payout' && activeDetail.id === payout.id),
                       padding: '14px 16px',
                     }}
                   >
@@ -1220,7 +1225,7 @@ export default function ProfileDashboard({
                     key={escrow.id}
                     type="button"
                     onClick={() => setActiveDetail({ kind: 'escrow', id: escrow.id })}
-                    style={getClickableCardStyle(activeDetail.kind === 'escrow' && activeDetail.id === escrow.id)}
+                    style={getClickableCardStyle(activeDetail?.kind === 'escrow' && activeDetail.id === escrow.id)}
                   >
                     <div
                       style={{
@@ -1291,11 +1296,59 @@ export default function ProfileDashboard({
           )}
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <Panel
-            title="Detail view"
-            subtitle="Click any message, request, lead, payout, or escrow item to inspect it here"
+        {activeDetail && (
+          <div
+            onClick={closeDetail}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.72)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 120,
+              padding: 20,
+            }}
           >
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: 960,
+                maxHeight: '88vh',
+                overflowY: 'auto',
+              }}
+            >
+              <Panel
+                title="Detail view"
+                subtitle="Click any message, request, lead, payout, or escrow item to inspect it here"
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    marginBottom: 18,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={closeDetail}
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 999,
+                      color: colors.text2,
+                      fontFamily: fonts.body,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
             {activeMessage && (
               <div>
                 <div
@@ -1716,7 +1769,7 @@ export default function ProfileDashboard({
               </div>
             )}
 
-            {activeDetail.kind === 'balance' && (
+            {activeDetail?.kind === 'balance' && (
               <div>
                 <div
                   style={{
@@ -1916,8 +1969,10 @@ export default function ProfileDashboard({
                 </div>
               </div>
             )}
-          </Panel>
-        </div>
+              </Panel>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
