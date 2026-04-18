@@ -169,6 +169,8 @@ interface PaymentIntentInput {
   totalAmountKobo: number;
 }
 
+export type MarketplaceStateScope = 'public' | 'full';
+
 function requireSupabase() {
   if (!isSupabaseConfigured()) {
     throw new Error(
@@ -806,7 +808,10 @@ async function fetchProviderEarnings(viewerId: string) {
   };
 }
 
-export async function getMarketplaceState(sessionUser: Session['user'] | null | undefined) {
+export async function getMarketplaceState(
+  sessionUser: Session['user'] | null | undefined,
+  scope: MarketplaceStateScope = 'full',
+) {
   if (!isSupabaseConfigured()) {
     return emptyMarketplaceState();
   }
@@ -816,7 +821,7 @@ export async function getMarketplaceState(sessionUser: Session['user'] | null | 
   state.sponsoredAds = sponsoredAds;
   state.browseRequests = requestData.mapped;
 
-  if (!sessionUser?.email) {
+  if (scope === 'public' || !sessionUser?.email) {
     return state;
   }
 

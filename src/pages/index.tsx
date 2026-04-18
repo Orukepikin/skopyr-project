@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useEffect, useMemo, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import Splash from '@/components/Splash';
 import Hero from '@/components/Hero';
 import Categories from '@/components/Categories';
@@ -24,6 +24,7 @@ type Screen = 'splash' | 'home' | 'categories' | 'form' | 'bids' | 'browse' | 'd
 
 const siteUrl = 'https://www.skopyr.com';
 const ACTIVE_REQUEST_STORAGE_KEY = 'skopyr:active-request-id';
+const RETURN_CATEGORY_STORAGE_KEY = 'skopyr:return-category';
 
 interface AdCheckoutPayload {
   accessCode: string;
@@ -34,14 +35,38 @@ interface AdCheckoutPayload {
   budgetLabel: string;
 }
 
+function parseStoredCategory(value: string | null): SelectedCategory | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<SelectedCategory>;
+
+    if (!parsed.id || !parsed.name || !parsed.icon) {
+      return null;
+    }
+
+    return {
+      id: parsed.id,
+      name: parsed.name,
+      icon: parsed.icon,
+      tag: parsed.tag ?? null,
+    } as SelectedCategory;
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const { data: session, status } = useSession();
-  const marketplace = useMarketplace(session?.user);
   const [screen, setScreen] = useState<Screen>('splash');
   const [selectedCategory, setSelectedCategory] = useState<SelectedCategory | null>(null);
   const [dashboardRole, setDashboardRole] = useState<DashboardRole>('customer');
   const [dashboardDetail, setDashboardDetail] = useState<DashboardDetail | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const marketplaceScope = screen === 'browse' || screen === 'bids' || screen === 'dashboard' ? 'full' : 'public';
+  const marketplace = useMarketplace(session?.user, marketplaceScope);
 
   const navigate = (nextScreen: Screen) => setScreen(nextScreen);
   const navigateDashboard = (role: DashboardRole, detail: DashboardDetail | null = null) => {
@@ -56,11 +81,29 @@ export default function Home() {
     }
 
     const storedRequestId = window.localStorage.getItem(ACTIVE_REQUEST_STORAGE_KEY);
+    const storedCategory = parseStoredCategory(window.localStorage.getItem(RETURN_CATEGORY_STORAGE_KEY));
 
     if (storedRequestId) {
       setActiveRequestId(storedRequestId);
     }
+
+    if (storedCategory) {
+      setSelectedCategory(storedCategory);
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (selectedCategory) {
+      window.localStorage.setItem(RETURN_CATEGORY_STORAGE_KEY, JSON.stringify(selectedCategory));
+      return;
+    }
+
+    window.localStorage.removeItem(RETURN_CATEGORY_STORAGE_KEY);
+  }, [selectedCategory]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -88,9 +131,19 @@ export default function Home() {
 
     const returnScreen = window.localStorage.getItem('skopyr:return-screen');
     const returnRole = window.localStorage.getItem('skopyr:return-role');
+    const storedCategory = parseStoredCategory(window.localStorage.getItem(RETURN_CATEGORY_STORAGE_KEY));
 
     if (returnScreen === 'bids') {
       navigate('bids');
+    }
+
+    if (returnScreen === 'form') {
+      if (storedCategory) {
+        setSelectedCategory(storedCategory);
+        navigate('form');
+      } else {
+        navigate('categories');
+      }
     }
 
     if (returnScreen === 'dashboard') {
@@ -339,8 +392,24 @@ export default function Home() {
 
     if (request?.id) {
       setActiveRequestId(request.id);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(RETURN_CATEGORY_STORAGE_KEY);
+      }
       setScreen('bids');
     }
+  };
+
+  const handleRequireRequestAuth = async () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (selectedCategory) {
+      window.localStorage.setItem(RETURN_CATEGORY_STORAGE_KEY, JSON.stringify(selectedCategory));
+    }
+
+    window.localStorage.setItem('skopyr:return-screen', 'form');
+    await signIn('google');
   };
 
   const handleRoleChange = (nextRole: DashboardRole) => {
@@ -418,7 +487,10 @@ export default function Home() {
       )}
       {screen === 'form' && selectedCategory && (
         <RequestForm
+          key={selectedCategory.id}
           category={selectedCategory}
+          canSubmit={Boolean(session?.user?.email)}
+          onRequireAuth={() => void handleRequireRequestAuth()}
           onSubmit={handleCreateRequest}
           onBack={() => navigate('categories')}
         />

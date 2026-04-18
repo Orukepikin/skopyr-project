@@ -3,13 +3,23 @@ import { colors, fonts, SelectedCategory } from '@/lib/constants';
 import type { RequestDraft } from '@/lib/marketplace';
 import Button from './Button';
 
+const REQUEST_DRAFT_STORAGE_KEY = 'skopyr:pending-request-draft';
+
 interface Props {
   category: SelectedCategory;
+  canSubmit: boolean;
+  onRequireAuth: () => void | Promise<void>;
   onSubmit: (draft: RequestDraft) => void | Promise<void>;
   onBack: () => void;
 }
 
-export default function RequestForm({ category, onSubmit, onBack }: Props) {
+export default function RequestForm({
+  category,
+  canSubmit,
+  onRequireAuth,
+  onSubmit,
+  onBack,
+}: Props) {
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -25,6 +35,68 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
     const timeoutId = window.setTimeout(() => setVisible(true), 50);
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedDraft = window.localStorage.getItem(REQUEST_DRAFT_STORAGE_KEY);
+
+    if (!storedDraft) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedDraft) as Partial<RequestDraft>;
+
+      if (parsed.categoryId !== category.id) {
+        return;
+      }
+
+      setTitle(parsed.title || '');
+      setSummary(parsed.summary || '');
+      setBudgetMin(parsed.budgetMin ? `${parsed.budgetMin}` : '');
+      setBudgetMax(parsed.budgetMax ? `${parsed.budgetMax}` : '');
+      setLocation(parsed.location || '');
+      setUrgency(parsed.urgency || 'ASAP');
+    } catch {
+      window.localStorage.removeItem(REQUEST_DRAFT_STORAGE_KEY);
+    }
+  }, [category.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const hasDraftValues = Boolean(
+      title.trim() ||
+        summary.trim() ||
+        budgetMin.trim() ||
+        budgetMax.trim() ||
+        location.trim(),
+    );
+
+    if (!hasDraftValues) {
+      window.localStorage.removeItem(REQUEST_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      REQUEST_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        categoryId: category.id,
+        categoryName: category.name,
+        title,
+        summary,
+        budgetMin: Number.parseInt(budgetMin.replace(/[^0-9]/g, ''), 10) || 0,
+        budgetMax: Number.parseInt(budgetMax.replace(/[^0-9]/g, ''), 10) || 0,
+        location,
+        urgency,
+      } satisfies RequestDraft),
+    );
+  }, [budgetMax, budgetMin, category.id, category.name, location, summary, title, urgency]);
 
   const inputStyle = (field: string): React.CSSProperties => ({
     width: '100%',
@@ -76,6 +148,12 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
       return;
     }
 
+    if (!canSubmit) {
+      setMessage('Sign in with Google to post and save this request to your profile.');
+      await onRequireAuth();
+      return;
+    }
+
     setSubmitting(true);
     setMessage(null);
 
@@ -90,6 +168,9 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
         location: location.trim(),
         urgency,
       });
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(REQUEST_DRAFT_STORAGE_KEY);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to post the request.');
     } finally {
@@ -173,6 +254,20 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
         >
           Real requests are saved to your profile and show up in the provider feed.
         </p>
+
+        {!canSubmit && (
+          <p
+            style={{
+              fontSize: 13,
+              fontFamily: fonts.body,
+              color: colors.text2,
+              margin: '0 0 24px',
+              lineHeight: 1.7,
+            }}
+          >
+            Fill in the request first, then sign in once to post it and keep it inside your buyer profile.
+          </p>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
@@ -283,7 +378,11 @@ export default function RequestForm({ category, onSubmit, onBack }: Props) {
 
           <div style={{ marginTop: 12 }}>
             <Button full onClick={handleSubmit} disabled={submitting || !isReady}>
-              {submitting ? 'Posting request...' : 'Post request -> Get bids'}
+              {submitting
+                ? 'Posting request...'
+                : canSubmit
+                  ? 'Post request -> Get bids'
+                  : 'Sign in to post request'}
             </Button>
             <p
               style={{

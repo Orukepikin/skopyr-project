@@ -16,6 +16,7 @@ import {
   type AppRole,
   type BidDraft,
   type BidUpdateDraft,
+  type CustomerRequest,
   type MarketplaceBid,
   type MarketplaceState,
   type RequestDraft,
@@ -24,6 +25,7 @@ import {
 } from '@/lib/marketplace';
 
 type Mode = 'supabase' | 'fallback';
+type MarketplaceStateScope = 'public' | 'full';
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   const response = await fetch(input, init);
@@ -36,7 +38,30 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   return payload;
 }
 
-export function useMarketplace(user: Session['user'] | null | undefined) {
+function mergePublicState(current: MarketplaceState, incoming: MarketplaceState): MarketplaceState {
+  return {
+    ...current,
+    sponsoredAds: incoming.sponsoredAds,
+    browseRequests: incoming.browseRequests,
+  };
+}
+
+function buildLocalCustomerRequest(request: BrowseRequest): CustomerRequest {
+  return {
+    id: request.id,
+    title: request.title,
+    location: request.loc,
+    budget: request.budget,
+    bids: request.bids,
+    status: 'Open',
+    provider: 'Waiting for provider bids',
+  };
+}
+
+export function useMarketplace(
+  user: Session['user'] | null | undefined,
+  requestedScope: MarketplaceStateScope = 'full',
+) {
   const supabaseMode = isSupabaseEnabled();
   const [fallbackState, setFallbackState] = useMarketplaceFallbackState({
     email: user?.email,
@@ -51,7 +76,7 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (scope: MarketplaceStateScope = requestedScope) => {
     if (!supabaseMode) {
       setMode('fallback');
       setState(fallbackState);
@@ -63,8 +88,10 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
     setLoading(true);
 
     try {
-      const payload = await requestJson<{ state: MarketplaceState }>('/api/marketplace');
-      setState(payload.state);
+      const payload = await requestJson<{ state: MarketplaceState }>(
+        scope === 'public' ? '/api/marketplace?scope=public' : '/api/marketplace',
+      );
+      setState((current) => (scope === 'public' ? mergePublicState(current, payload.state) : payload.state));
       setError(null);
       return payload.state;
     } catch (refreshError) {
@@ -75,18 +102,18 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
     } finally {
       setLoading(false);
     }
-  }, [fallbackState, supabaseMode]);
+  }, [fallbackState, requestedScope, supabaseMode]);
 
   useEffect(() => {
     if (supabaseMode) {
-      refresh().catch(() => undefined);
+      refresh(requestedScope).catch(() => undefined);
       return;
     }
 
     setMode('fallback');
     setState(fallbackState);
     setLoading(false);
-  }, [fallbackState, refresh, supabaseMode, user?.email]);
+  }, [fallbackState, refresh, requestedScope, supabaseMode, user?.email]);
 
   const mutate = useCallback(
     async <T,>(
@@ -128,7 +155,20 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
             },
             body: JSON.stringify(draft),
           });
-          await refresh();
+          setState((current) => ({
+            ...current,
+            browseRequests: [
+              payload.request,
+              ...current.browseRequests.filter((request) => request.id !== payload.request.id),
+            ],
+            customerRequests: current.viewer
+              ? [
+                  buildLocalCustomerRequest(payload.request),
+                  ...current.customerRequests.filter((request) => request.id !== payload.request.id),
+                ]
+              : current.customerRequests,
+          }));
+          void refresh('full').catch(() => undefined);
           return payload.request;
         },
         () => {
