@@ -2,6 +2,7 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import type { Session } from 'next-auth';
 import { SessionProvider } from 'next-auth/react';
+import { useEffect } from 'react';
 import '@/styles/globals.css';
 
 type SkopyrAppProps = AppProps<{
@@ -9,6 +10,20 @@ type SkopyrAppProps = AppProps<{
 }>;
 
 export default function App({ Component, pageProps }: SkopyrAppProps) {
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (window.location.hostname !== 'skopyr.com') {
+      return;
+    }
+
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.hostname = 'www.skopyr.com';
+    window.location.replace(redirectUrl.toString());
+  }, []);
+
   return (
     <SessionProvider session={pageProps.session}>
       <Head>

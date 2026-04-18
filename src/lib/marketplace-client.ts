@@ -28,7 +28,23 @@ type Mode = 'supabase' | 'fallback';
 type MarketplaceStateScope = 'public' | 'interactive' | 'full';
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
-  const response = await fetch(input, init);
+  let response: Response;
+
+  try {
+    response = await fetch(input, init);
+  } catch (error) {
+    if (
+      error instanceof TypeError &&
+      error.message.toLowerCase().includes('failed to fetch')
+    ) {
+      throw new Error(
+        'Marketplace connection failed. Refresh the page and make sure you are on www.skopyr.com before sending the bid again.',
+      );
+    }
+
+    throw error;
+  }
+
   const payload = (await response.json()) as T & { message?: string };
 
   if (!response.ok) {
