@@ -10,8 +10,11 @@ import {
   nextPayoutWindowLabel,
   normalizeServiceLabel,
   type AdDraft,
+  type BidDraft,
+  type BidUpdateDraft,
   type AppRole,
   type BrowseRequest,
+  type MarketplaceBid,
   type MarketplaceState,
   type ProfileSummary,
   type RequestDraft,
@@ -75,6 +78,18 @@ interface ServiceRequestRow {
   urgency: string;
   status: string;
   bid_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProviderBidRow {
+  id: string;
+  service_request_id: string;
+  provider_profile_id: string;
+  amount_kobo: number;
+  eta_label: string;
+  message: string;
+  status: 'Submitted' | 'Accepted';
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +173,14 @@ function requireSupabase() {
   }
 
   return getSupabaseAdmin();
+}
+
+function isMissingProviderBidTableError(error: { message?: string } | null | undefined) {
+  return Boolean(
+    error?.message &&
+      error.message.includes('provider_bids') &&
+      error.message.includes('does not exist'),
+  );
 }
 
 function ensureSessionUser(user: Session['user'] | undefined | null): SessionUser {
@@ -316,6 +339,52 @@ function mapBrowseRequest(row: ServiceRequestRow, profile: ProfileRow | undefine
   };
 }
 
+function mapMarketplaceBid(
+  row: ProviderBidRow,
+  providerProfile: ProfileRow | undefined,
+  requestRow: ServiceRequestRow | undefined,
+  requesterProfile: ProfileRow | undefined,
+): MarketplaceBid | null {
+  if (!requestRow) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    serviceRequestId: row.service_request_id,
+    requestTitle: requestRow.title,
+    requestBudget: formatBudget(requestRow.budget_min, requestRow.budget_max),
+    requesterName:
+      requesterProfile?.full_name ||
+      requesterProfile?.email.split('@')[0] ||
+      'Skopyr member',
+    requesterProfileId: requestRow.customer_profile_id,
+    category: requestRow.category_name,
+    providerProfileId: row.provider_profile_id,
+    name:
+      providerProfile?.full_name ||
+      providerProfile?.email.split('@')[0] ||
+      'Provider',
+    rating: Number(providerProfile?.rating_average ?? 4.8),
+    jobs: providerProfile?.completed_jobs ?? 0,
+    price: Math.round(row.amount_kobo / 100),
+    avatar:
+      providerProfile?.full_name
+        ?.split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? '')
+        .join('') || 'SK',
+    verified: providerProfile?.verified ?? true,
+    msg: row.message,
+    eta: row.eta_label,
+    time: formatRelativeTime(row.updated_at),
+    location: requestRow.location,
+    status: row.status === 'Accepted' ? 'Accepted' : 'Submitted',
+    updatedAt: row.updated_at,
+  };
+}
+
 async function fetchSponsoredAds() {
   const supabase = requireSupabase();
   const { data, error } = await supabase
@@ -355,18 +424,117 @@ async function fetchServiceRequests(limit = 18) {
   };
 }
 
+async function fetchRequestRowsByIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.from('service_requests').select('*').in('id', ids);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data as ServiceRequestRow[]) ?? [];
+}
+
+async function fetchRelevantBidRows(viewerId: string, customerRequestIds: string[]) {
+  const supabase = requireSupabase();
+  const bidRowsById = new Map<string, ProviderBidRow>();
+
+  const queries = [
+    supabase.from('provider_bids').select('*').eq('provider_profile_id', viewerId),
+  ];
+
+  if (customerRequestIds.length > 0) {
+    queries.push(
+      supabase.from('provider_bids').select('*').in('service_request_id', customerRequestIds),
+    );
+  }
+
+  const results = await Promise.all(queries);
+
+  for (const result of results) {
+    if (result.error) {
+      if (isMissingProviderBidTableError(result.error)) {
+        return [];
+      }
+
+      throw new Error(result.error.message);
+    }
+
+    for (const row of (result.data as ProviderBidRow[]) ?? []) {
+      bidRowsById.set(row.id, row);
+    }
+  }
+
+  return Array.from(bidRowsById.values());
+}
+
+async function mapBidRows(
+  rows: ProviderBidRow[],
+  requestRows: ServiceRequestRow[] = [],
+) {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const requestRowMap = new Map(requestRows.map((row) => [row.id, row]));
+  const missingRequestIds = uniqueValues(
+    rows
+      .map((row) => row.service_request_id)
+      .filter((requestId) => !requestRowMap.has(requestId)),
+  );
+  const loadedRequestRows = await fetchRequestRowsByIds(missingRequestIds);
+
+  loadedRequestRows.forEach((row) => {
+    requestRowMap.set(row.id, row);
+  });
+
+  const providerProfiles = await fetchProfiles(
+    uniqueValues(rows.map((row) => row.provider_profile_id)),
+  );
+  const requesterProfiles = await fetchProfiles(
+    uniqueValues(
+      Array.from(requestRowMap.values()).map((row) => row.customer_profile_id),
+    ),
+  );
+
+  return rows
+    .map((row) =>
+      mapMarketplaceBid(
+        row,
+        providerProfiles.get(row.provider_profile_id),
+        requestRowMap.get(row.service_request_id),
+        requesterProfiles.get(requestRowMap.get(row.service_request_id)?.customer_profile_id || ''),
+      ),
+    )
+    .filter((bid): bid is MarketplaceBid => Boolean(bid));
+}
+
 function buildProviderLeads(
   requestRows: ServiceRequestRow[],
   profileMap: Map<string, ProfileRow>,
   viewer: ProfileRow,
   providerAds: SponsoredAd[],
+  bidRows: ProviderBidRow[],
 ) {
+  const requestIdsWithExistingBid = new Set(
+    bidRows
+      .filter((row) => row.provider_profile_id === viewer.id)
+      .map((row) => row.service_request_id),
+  );
   const viewerServiceText = providerAds
     .filter((ad) => ad.providerProfileId === viewer.id && ad.active)
     .map((ad) => normalizeServiceLabel(`${ad.service} ${ad.headline}`));
 
   const rows = requestRows.filter((row) => {
     if (row.customer_profile_id === viewer.id) {
+      return false;
+    }
+
+    if (requestIdsWithExistingBid.has(row.id)) {
       return false;
     }
 
@@ -501,23 +669,33 @@ function mapThreadCollection(
 function buildCustomerRequestCards(
   rows: ServiceRequestRow[],
   viewerId: string,
+  bidRows: ProviderBidRow[],
+  profileMap: Map<string, ProfileRow>,
 ) {
   return rows
     .filter((row) => row.customer_profile_id === viewerId)
-    .map((row) => ({
-      id: row.id,
-      title: row.title,
-      location: row.location,
-      budget: formatBudget(row.budget_min, row.budget_max),
-      bids: row.bid_count,
-      status: row.status,
-      provider:
-        row.status === 'Escrow active'
-          ? 'Payment protected while work is in progress'
-          : row.bid_count > 0
-            ? `${row.bid_count} provider${row.bid_count === 1 ? '' : 's'} interested`
-            : 'Waiting for provider messages',
-    }));
+    .map((row) => {
+      const requestBids = bidRows.filter((bid) => bid.service_request_id === row.id);
+      const acceptedBid = requestBids.find((bid) => bid.status === 'Accepted');
+      const acceptedProvider = acceptedBid
+        ? profileMap.get(acceptedBid.provider_profile_id)
+        : null;
+
+      return {
+        id: row.id,
+        title: row.title,
+        location: row.location,
+        budget: formatBudget(row.budget_min, row.budget_max),
+        bids: row.bid_count,
+        status: row.status,
+        provider:
+          row.status === 'Escrow active'
+            ? `${acceptedProvider?.full_name || 'Accepted provider'} is booked with payment protected in escrow`
+            : row.bid_count > 0
+              ? `${row.bid_count} provider${row.bid_count === 1 ? '' : 's'} submitted real bids`
+              : 'Waiting for provider bids',
+      };
+    });
 }
 
 async function fetchEscrowsForCustomer(viewerId: string) {
@@ -628,11 +806,15 @@ export async function getMarketplaceState(sessionUser: Session['user'] | null | 
   const viewer = await ensureProfile(ensureSessionUser(sessionUser));
   const viewerSummary = toProfileSummary(viewer);
   state.viewer = viewerSummary;
+  const customerRequestIds = requestData.rows
+    .filter((row) => row.customer_profile_id === viewer.id)
+    .map((row) => row.id);
 
-  const [threadRows, customerEscrows, providerEarnings] = await Promise.all([
+  const [threadRows, customerEscrows, providerEarnings, bidRows] = await Promise.all([
     fetchThreadRows(viewer.id),
     fetchEscrowsForCustomer(viewer.id),
     fetchProviderEarnings(viewer.id),
+    fetchRelevantBidRows(viewer.id, customerRequestIds),
   ]);
   const participantIds = uniqueValues(
     threadRows.flatMap((row) => [row.customer_profile_id, row.provider_profile_id]),
@@ -642,12 +824,17 @@ export async function getMarketplaceState(sessionUser: Session['user'] | null | 
   );
   const participantProfiles = await fetchProfiles(participantIds);
   const messagesByThreadId = await fetchMessagesByThreadIds(threadRows.map((row) => row.id));
+  const requestBidProfiles = await fetchProfiles(
+    uniqueValues(bidRows.map((row) => row.provider_profile_id)),
+  );
   const providerLeads = buildProviderLeads(
     requestData.rows,
     requestProfileMap,
     viewer,
     sponsoredAds,
+    bidRows,
   );
+  const requestRowMap = new Map(requestData.rows.map((row) => [row.id, row]));
 
   state.customerThreads = mapThreadCollection(
     threadRows,
@@ -663,7 +850,22 @@ export async function getMarketplaceState(sessionUser: Session['user'] | null | 
     viewer,
     'provider',
   );
-  state.customerRequests = buildCustomerRequestCards(requestData.rows, viewer.id);
+  state.requestBids = bidRows
+    .map((row) =>
+      mapMarketplaceBid(
+        row,
+        requestBidProfiles.get(row.provider_profile_id),
+        requestRowMap.get(row.service_request_id),
+        requestProfileMap.get(requestRowMap.get(row.service_request_id)?.customer_profile_id || ''),
+      ),
+    )
+    .filter((bid): bid is MarketplaceBid => Boolean(bid));
+  state.customerRequests = buildCustomerRequestCards(
+    requestData.rows,
+    viewer.id,
+    bidRows,
+    requestBidProfiles,
+  );
   state.customerEscrows = customerEscrows;
   state.providerLeads = providerLeads;
   state.providerBalance = providerEarnings.balance;
@@ -740,6 +942,178 @@ export async function createMarketplaceAd(
   }
 
   return mapSponsoredAd(data as SponsoredAdRow, viewer);
+}
+
+async function syncServiceRequestBidCount(serviceRequestId: string) {
+  const supabase = requireSupabase();
+  const { count, error } = await supabase
+    .from('provider_bids')
+    .select('*', { count: 'exact', head: true })
+    .eq('service_request_id', serviceRequestId);
+
+  if (error) {
+    if (isMissingProviderBidTableError(error)) {
+      throw new Error(
+        'Provider bid storage is not live yet. Run the provider_bids SQL in Supabase first.',
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  const { error: updateError } = await supabase
+    .from('service_requests')
+    .update({
+      bid_count: count ?? 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', serviceRequestId);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+}
+
+export async function createMarketplaceBid(
+  sessionUser: Session['user'] | null | undefined,
+  draft: BidDraft,
+) {
+  if (!Number.isFinite(draft.amount) || draft.amount <= 0) {
+    throw new Error('Add a valid bid amount before sending your quote.');
+  }
+
+  if (!draft.eta.trim() || !draft.message.trim()) {
+    throw new Error('Add your arrival time and a short note before sending the bid.');
+  }
+
+  const viewer = await ensureProfile(ensureSessionUser(sessionUser), 'provider');
+  const supabase = requireSupabase();
+  const { data: requestData, error: requestError } = await supabase
+    .from('service_requests')
+    .select('*')
+    .eq('id', draft.serviceRequestId)
+    .single();
+
+  if (requestError) {
+    throw new Error(requestError.message);
+  }
+
+  const request = requestData as ServiceRequestRow;
+
+  if (request.customer_profile_id === viewer.id) {
+    throw new Error('You cannot bid on your own request.');
+  }
+
+  const now = new Date().toISOString();
+  const { data: existing, error: existingError } = await supabase
+    .from('provider_bids')
+    .select('*')
+    .eq('service_request_id', draft.serviceRequestId)
+    .eq('provider_profile_id', viewer.id)
+    .maybeSingle();
+
+  if (existingError) {
+    if (isMissingProviderBidTableError(existingError)) {
+      throw new Error(
+        'Provider bid storage is not live yet. Run the provider_bids SQL in Supabase first.',
+      );
+    }
+
+    throw new Error(existingError.message);
+  }
+
+  const payload = {
+    service_request_id: draft.serviceRequestId,
+    provider_profile_id: viewer.id,
+    amount_kobo: Math.round(draft.amount * 100),
+    eta_label: draft.eta.trim(),
+    message: draft.message.trim(),
+    status: (existing as ProviderBidRow | null)?.status || 'Submitted',
+    updated_at: now,
+  };
+  const mutation = existing
+    ? supabase
+        .from('provider_bids')
+        .update(payload)
+        .eq('id', (existing as ProviderBidRow).id)
+    : supabase.from('provider_bids').insert({
+        ...payload,
+        created_at: now,
+      });
+  const { data, error } = await mutation.select('*').single();
+
+  if (error) {
+    if (isMissingProviderBidTableError(error)) {
+      throw new Error(
+        'Provider bid storage is not live yet. Run the provider_bids SQL in Supabase first.',
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  await syncServiceRequestBidCount(draft.serviceRequestId);
+  const bids = await mapBidRows([data as ProviderBidRow], [request]);
+  return bids[0] || null;
+}
+
+export async function updateMarketplaceBid(
+  sessionUser: Session['user'] | null | undefined,
+  bidId: string,
+  draft: BidUpdateDraft,
+) {
+  if (!Number.isFinite(draft.amount) || draft.amount <= 0) {
+    throw new Error('Add a valid bid amount before saving changes.');
+  }
+
+  if (!draft.eta.trim() || !draft.message.trim()) {
+    throw new Error('Add your arrival time and a short note before saving this bid.');
+  }
+
+  const viewer = await ensureProfile(ensureSessionUser(sessionUser), 'provider');
+  const supabase = requireSupabase();
+  const { data: existingData, error: existingError } = await supabase
+    .from('provider_bids')
+    .select('*')
+    .eq('id', bidId)
+    .eq('provider_profile_id', viewer.id)
+    .single();
+
+  if (existingError) {
+    if (isMissingProviderBidTableError(existingError)) {
+      throw new Error(
+        'Provider bid storage is not live yet. Run the provider_bids SQL in Supabase first.',
+      );
+    }
+
+    throw new Error(existingError.message);
+  }
+
+  const existing = existingData as ProviderBidRow;
+
+  if (existing.status === 'Accepted') {
+    throw new Error('Accepted bids can no longer be edited.');
+  }
+
+  const { data, error } = await supabase
+    .from('provider_bids')
+    .update({
+      amount_kobo: Math.round(draft.amount * 100),
+      eta_label: draft.eta.trim(),
+      message: draft.message.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', bidId)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await syncServiceRequestBidCount(existing.service_request_id);
+  const bids = await mapBidRows([data as ProviderBidRow]);
+  return bids[0] || null;
 }
 
 export async function toggleMarketplaceAd(
@@ -1039,6 +1413,21 @@ export async function finalizeVerifiedPayment(reference: string) {
 
   if (!escrow) {
     throw new Error('Unable to create the escrow record.');
+  }
+
+  if (record.provider_profile_id && record.service_request_id) {
+    const { error: bidUpdateError } = await supabase
+      .from('provider_bids')
+      .update({
+        status: 'Accepted',
+        updated_at: now,
+      })
+      .eq('service_request_id', record.service_request_id)
+      .eq('provider_profile_id', record.provider_profile_id);
+
+    if (bidUpdateError && !isMissingProviderBidTableError(bidUpdateError)) {
+      throw new Error(bidUpdateError.message);
+    }
   }
 
   if (record.provider_profile_id) {

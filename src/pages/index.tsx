@@ -13,6 +13,8 @@ import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
 import { useMarketplace } from '@/lib/marketplace-client';
 import {
   buildMarketplaceBids,
+  type BidUpdateDraft,
+  type MarketplaceBid,
   type RequestDraft,
   type SponsoredAd,
 } from '@/lib/marketplace';
@@ -101,8 +103,8 @@ export default function Home() {
   );
 
   const liveBids = useMemo(
-    () => buildMarketplaceBids(activeRequest, marketplace.state.sponsoredAds),
-    [activeRequest, marketplace.state.sponsoredAds],
+    () => buildMarketplaceBids(activeRequest, marketplace.state.requestBids),
+    [activeRequest, marketplace.state.requestBids],
   );
 
   const providerOwnedAds = useMemo(
@@ -111,6 +113,23 @@ export default function Home() {
         (ad) => ad.providerProfileId && ad.providerProfileId === marketplace.state.viewer?.id,
       ),
     [marketplace.state.sponsoredAds, marketplace.state.viewer?.id],
+  );
+
+  const providerSubmittedBids = useMemo(
+    () =>
+      marketplace.state.requestBids.filter(
+        (bid) => bid.providerProfileId && bid.providerProfileId === marketplace.state.viewer?.id,
+      ),
+    [marketplace.state.requestBids, marketplace.state.viewer?.id],
+  );
+
+  const providerBidMap = useMemo(
+    () =>
+      providerSubmittedBids.reduce<Record<string, MarketplaceBid>>((accumulator, bid) => {
+        accumulator[bid.serviceRequestId] = bid;
+        return accumulator;
+      }, {}),
+    [providerSubmittedBids],
   );
 
   const browseableRequests = useMemo(
@@ -233,6 +252,27 @@ export default function Home() {
     navigateDashboard('provider', threadId ? { kind: 'message', id: threadId } : null);
   };
 
+  const handleCreateBid = async (requestId: string, draft: BidUpdateDraft) => {
+    const bid = await marketplace.createBid({
+      serviceRequestId: requestId,
+      amount: draft.amount,
+      eta: draft.eta,
+      message: draft.message,
+    });
+
+    if (bid?.id) {
+      navigateDashboard('provider', { kind: 'bid', id: bid.id });
+    }
+  };
+
+  const handleUpdateBid = async (bidId: string, draft: BidUpdateDraft) => {
+    const bid = await marketplace.updateBid(bidId, draft);
+
+    if (bid?.id) {
+      setDashboardDetail({ kind: 'bid', id: bid.id });
+    }
+  };
+
   const handleDashboardReply = async (role: DashboardRole, threadId: string, body: string) => {
     await marketplace.sendMessage({
       senderRole: role,
@@ -343,6 +383,8 @@ export default function Home() {
         <BrowseJobs
           onBack={() => navigate('home')}
           requests={browseableRequests}
+          providerBidMap={providerBidMap}
+          onSubmitBid={(request, draft) => void handleCreateBid(request.id, draft)}
           onMessageRequester={(request) =>
             void handleProviderToCustomerMessage({
               requesterName: request.requester,
@@ -362,6 +404,8 @@ export default function Home() {
           userEmail={marketplace.state.viewer?.email || session?.user?.email}
           customerThreads={marketplace.state.customerThreads}
           providerThreads={marketplace.state.providerThreads}
+          requestBids={marketplace.state.requestBids}
+          providerBids={providerSubmittedBids}
           sponsoredAds={providerOwnedAds}
           customerRequests={marketplace.state.customerRequests}
           providerLeads={marketplace.state.providerLeads}
@@ -379,6 +423,9 @@ export default function Home() {
           onOpenThread={handleOpenThread}
           onCreateAd={(draft) => {
             void marketplace.createAd(draft);
+          }}
+          onUpdateBid={(bidId, draft) => {
+            void handleUpdateBid(bidId, draft);
           }}
           onToggleAd={(adId) => {
             void marketplace.toggleAd(adId);

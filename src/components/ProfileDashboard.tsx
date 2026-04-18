@@ -4,8 +4,10 @@ import { colors, fonts } from '@/lib/constants';
 import type { DashboardDetail, DashboardRole } from '@/lib/dashboard';
 import type {
   AdDraft,
+  BidUpdateDraft,
   CustomerRequest,
   EscrowItem,
+  MarketplaceBid,
   MarketplaceThread,
   Payout,
   ProviderBalance,
@@ -20,6 +22,8 @@ interface Props {
   userEmail?: string | null;
   customerThreads: MarketplaceThread[];
   providerThreads: MarketplaceThread[];
+  requestBids: MarketplaceBid[];
+  providerBids: MarketplaceBid[];
   sponsoredAds: SponsoredAd[];
   customerRequests: CustomerRequest[];
   providerLeads: ProviderLead[];
@@ -34,6 +38,7 @@ interface Props {
   onSendMessage: (role: DashboardRole, threadId: string, body: string) => void;
   onOpenThread: (role: DashboardRole, threadId: string) => void;
   onCreateAd: (draft: AdDraft) => void;
+  onUpdateBid: (bidId: string, draft: BidUpdateDraft) => void;
   onToggleAd: (adId: string) => void;
   onClearInitialDetail: () => void;
 }
@@ -141,6 +146,8 @@ export default function ProfileDashboard({
   userEmail,
   customerThreads,
   providerThreads,
+  requestBids,
+  providerBids,
   sponsoredAds,
   customerRequests,
   providerLeads,
@@ -155,12 +162,18 @@ export default function ProfileDashboard({
   onSendMessage,
   onOpenThread,
   onCreateAd,
+  onUpdateBid,
   onToggleAd,
   onClearInitialDetail,
 }: Props) {
   const [visible, setVisible] = useState(false);
   const [activeDetail, setActiveDetail] = useState<DashboardDetail | null>(initialDetail);
   const [draftReply, setDraftReply] = useState('');
+  const [bidDraft, setBidDraft] = useState<BidUpdateDraft>({
+    amount: 18000,
+    eta: 'Today 4 PM',
+    message: '',
+  });
   const [adDraft, setAdDraft] = useState<AdDraft>({
     service: '',
     headline: '',
@@ -189,6 +202,23 @@ export default function ProfileDashboard({
     }
   }, [activeDetail, onOpenThread, role]);
 
+  const activeBid =
+    activeDetail?.kind === 'bid'
+      ? providerBids.find((bid) => bid.id === activeDetail.id) ?? null
+      : null;
+
+  useEffect(() => {
+    if (!activeBid) {
+      return;
+    }
+
+    setBidDraft({
+      amount: activeBid.price,
+      eta: activeBid.eta,
+      message: activeBid.msg,
+    });
+  }, [activeBid]);
+
   const headline = useMemo(
     () =>
       role === 'provider'
@@ -201,9 +231,9 @@ export default function ProfileDashboard({
     if (role === 'provider') {
       return [
         {
-          label: 'New leads',
-          value: `${providerLeads.length}`,
-          note: 'Open requests that match your services and location',
+          label: 'Active bids',
+          value: `${providerBids.length}`,
+          note: 'Real provider quotes you can edit until a buyer accepts',
         },
         {
           label: 'Unread messages',
@@ -235,7 +265,14 @@ export default function ProfileDashboard({
         note: 'Track every protected payment until the job is complete',
       },
     ];
-  }, [customerEscrows.length, customerRequests.length, messageThreads, providerBalance, providerLeads.length, role]);
+  }, [
+    customerEscrows.length,
+    customerRequests.length,
+    messageThreads,
+    providerBalance,
+    providerBids.length,
+    role,
+  ]);
 
   const activeMessage =
     activeDetail?.kind === 'message'
@@ -245,6 +282,10 @@ export default function ProfileDashboard({
     activeDetail?.kind === 'request'
       ? customerRequests.find((request) => request.id === activeDetail.id) ?? null
       : null;
+  const activeRequestBids =
+    activeRequest?.id
+      ? requestBids.filter((bid) => bid.serviceRequestId === activeRequest.id)
+      : [];
   const activeLead =
     activeDetail?.kind === 'lead'
       ? providerLeads.find((lead) => lead.id === activeDetail.id) ?? null
@@ -301,6 +342,22 @@ export default function ProfileDashboard({
       startingPrice: 'From NGN 15k',
       budget: 'NGN 10k / week',
       badge: 'Sponsored',
+    });
+  };
+
+  const handleBidUpdate = () => {
+    if (!activeBid || !Number.isFinite(bidDraft.amount) || bidDraft.amount <= 0) {
+      return;
+    }
+
+    if (!bidDraft.eta.trim() || !bidDraft.message.trim()) {
+      return;
+    }
+
+    onUpdateBid(activeBid.id, {
+      amount: Math.round(bidDraft.amount),
+      eta: bidDraft.eta.trim(),
+      message: bidDraft.message.trim(),
     });
   };
 
@@ -490,8 +547,8 @@ export default function ProfileDashboard({
               key={item.label}
               type="button"
               onClick={() => {
-                if (role === 'provider' && item.label === 'New leads' && providerLeads[0]) {
-                  openDetail({ kind: 'lead', id: providerLeads[0].id });
+                if (role === 'provider' && item.label === 'Active bids' && providerBids[0]) {
+                  openDetail({ kind: 'bid', id: providerBids[0].id });
                   return;
                 }
 
@@ -569,33 +626,105 @@ export default function ProfileDashboard({
           }}
         >
           <Panel
-            title={role === 'provider' ? 'Who wants your services' : 'Your requests'}
+            title={role === 'provider' ? 'Bids and demand' : 'Your requests'}
             subtitle={
               role === 'provider'
-                ? 'Open requests matched from real buyer activity'
+                ? 'Manage your submitted bids and see open buyer demand you have not quoted yet'
                 : 'Requests you posted and the current booking status'
             }
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {role === 'provider'
-                ? providerLeads.map((lead) => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => openDetail({ kind: 'lead', id: lead.id })}
-                      style={clickableCardStyle(activeDetail?.kind === 'lead' && activeDetail.id === lead.id)}
-                    >
-                      <div style={{ fontSize: 16, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
-                        {lead.service}
+                ? (
+                    <>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: fonts.body,
+                          fontWeight: 700,
+                          color: colors.text3,
+                          letterSpacing: 1.6,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Your bids
                       </div>
-                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
-                        {lead.requester} | {lead.location} | {lead.budget}
+
+                      {providerBids.map((bid) => (
+                        <button
+                          key={bid.id}
+                          type="button"
+                          onClick={() => openDetail({ kind: 'bid', id: bid.id })}
+                          style={clickableCardStyle(activeDetail?.kind === 'bid' && activeDetail.id === bid.id)}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                            <div>
+                              <div style={{ fontSize: 16, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                                {bid.requestTitle}
+                              </div>
+                              <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                                {bid.requesterName} | {bid.location} | {bid.requestBudget}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: 18, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                                {bid.price.toLocaleString('en-NG', {
+                                  style: 'currency',
+                                  currency: 'NGN',
+                                  maximumFractionDigits: 0,
+                                })}
+                              </div>
+                              <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3, marginTop: 4 }}>
+                                {bid.status} | {bid.eta}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7, marginTop: 10 }}>
+                            {bid.msg}
+                          </div>
+                        </button>
+                      ))}
+
+                      {providerBids.length === 0 && (
+                        <EmptyPanelMessage>
+                          You have not sent any bids yet. Open a live request, send a quote, and it will appear here for editing and tracking.
+                        </EmptyPanelMessage>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: fonts.body,
+                          fontWeight: 700,
+                          color: colors.text3,
+                          letterSpacing: 1.6,
+                          textTransform: 'uppercase',
+                          marginTop: 10,
+                        }}
+                      >
+                        Open demand you can still quote
                       </div>
-                      <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7, marginTop: 10 }}>
-                        {lead.interest}
-                      </div>
-                    </button>
-                  ))
+
+                      {providerLeads.map((lead) => (
+                        <button
+                          key={lead.id}
+                          type="button"
+                          onClick={() => openDetail({ kind: 'lead', id: lead.id })}
+                          style={clickableCardStyle(activeDetail?.kind === 'lead' && activeDetail.id === lead.id)}
+                        >
+                          <div style={{ fontSize: 16, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                            {lead.service}
+                          </div>
+                          <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                            {lead.requester} | {lead.location} | {lead.budget}
+                          </div>
+                          <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7, marginTop: 10 }}>
+                            {lead.interest}
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )
                 : customerRequests.map((request) => (
                     <button
                       key={request.id}
@@ -615,7 +744,7 @@ export default function ProfileDashboard({
                     </button>
                   ))}
 
-              {(role === 'provider' ? providerLeads.length === 0 : customerRequests.length === 0) && (
+              {(role === 'provider' ? providerLeads.length === 0 && providerBids.length === 0 : customerRequests.length === 0) && (
                 <EmptyPanelMessage>
                   {role === 'provider'
                     ? 'No matching leads yet. Create a sponsored ad or browse open requests to start conversations.'
@@ -935,7 +1064,7 @@ export default function ProfileDashboard({
                 overflowY: 'auto',
               }}
             >
-              <Panel title="Detail view" subtitle="Open messages, requests, leads, escrow, and payouts in one place">
+              <Panel title="Detail view" subtitle="Open messages, bids, requests, leads, escrow, and payouts in one place">
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
                   <button
                     type="button"
@@ -1089,6 +1218,177 @@ export default function ProfileDashboard({
                           {item}
                         </div>
                       ))}
+                    </div>
+
+                    {activeRequestBids.length > 0 && (
+                      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {activeRequestBids.map((bid) => (
+                          <div
+                            key={bid.id}
+                            style={{
+                              background: 'rgba(255,255,255,0.02)',
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: 16,
+                              padding: 16,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                              <div>
+                                <div style={{ fontSize: 16, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                                  {bid.name}
+                                </div>
+                                <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                                  {bid.status} | {bid.eta} | {bid.time}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 18, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                                {bid.price.toLocaleString('en-NG', {
+                                  style: 'currency',
+                                  currency: 'NGN',
+                                  maximumFractionDigits: 0,
+                                })}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text2, lineHeight: 1.7, marginTop: 12 }}>
+                              {bid.msg}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeBid && (
+                  <div>
+                    <div style={{ fontSize: 22, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                      Edit bid for {activeBid.requestTitle}
+                    </div>
+                    <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 6 }}>
+                      {activeBid.requesterName} | {activeBid.location} | {activeBid.requestBudget} | {activeBid.status}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            fontWeight: 700,
+                            color: colors.text3,
+                            letterSpacing: 1.6,
+                            textTransform: 'uppercase',
+                            marginBottom: 6,
+                          }}
+                        >
+                          Your price
+                        </div>
+                        <input
+                          type="number"
+                          min={1000}
+                          step={500}
+                          value={bidDraft.amount}
+                          disabled={activeBid.status === 'Accepted'}
+                          onChange={(event) =>
+                            setBidDraft((current) => ({
+                              ...current,
+                              amount: Number.parseInt(event.target.value || '0', 10),
+                            }))
+                          }
+                          style={{
+                            width: '100%',
+                            background: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            color: colors.text1,
+                            fontSize: 14,
+                            fontFamily: fonts.body,
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            fontWeight: 700,
+                            color: colors.text3,
+                            letterSpacing: 1.6,
+                            textTransform: 'uppercase',
+                            marginBottom: 6,
+                          }}
+                        >
+                          Arrival time
+                        </div>
+                        <input
+                          value={bidDraft.eta}
+                          disabled={activeBid.status === 'Accepted'}
+                          onChange={(event) =>
+                            setBidDraft((current) => ({ ...current, eta: event.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            background: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            color: colors.text1,
+                            fontSize: 14,
+                            fontFamily: fonts.body,
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            fontWeight: 700,
+                            color: colors.text3,
+                            letterSpacing: 1.6,
+                            textTransform: 'uppercase',
+                            marginBottom: 6,
+                          }}
+                        >
+                          Buyer-facing message
+                        </div>
+                        <textarea
+                          value={bidDraft.message}
+                          disabled={activeBid.status === 'Accepted'}
+                          onChange={(event) =>
+                            setBidDraft((current) => ({ ...current, message: event.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            minHeight: 120,
+                            background: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            color: colors.text1,
+                            fontSize: 14,
+                            fontFamily: fonts.body,
+                            resize: 'vertical',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, lineHeight: 1.6 }}>
+                        {activeBid.status === 'Accepted'
+                          ? 'This bid has already been accepted and funded, so it is locked for editing.'
+                          : 'Update the bid here and the buyer sees the latest quote immediately.'}
+                      </div>
+                      <Button size="sm" onClick={handleBidUpdate} disabled={activeBid.status === 'Accepted'}>
+                        Save bid changes
+                      </Button>
                     </div>
                   </div>
                 )}

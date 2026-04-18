@@ -382,7 +382,7 @@ export default function BidsView({
             margin: '0 0 24px',
           }}
         >
-          These bids are generated from real provider ads and profiles, so messages and earnings can persist.
+          These are real provider bids. Buyers can message each provider, compare quotes, and accept through escrow.
         </p>
 
         {bids.length === 0 ? (
@@ -397,7 +397,7 @@ export default function BidsView({
               lineHeight: 1.7,
             }}
           >
-            No providers have promoted this kind of service yet. Ask providers to run sponsored ads or browse the homepage ads to start a conversation.
+            No provider bids have landed yet. Providers can now submit real quotes from the browse screen, and they will appear here automatically.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -468,6 +468,22 @@ export default function BidsView({
                             }}
                           >
                             VERIFIED
+                          </span>
+                        )}
+                        {bid.status === 'Accepted' && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontFamily: fonts.body,
+                              fontWeight: 800,
+                              color: colors.accent,
+                              background: colors.accentDim,
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              letterSpacing: '0.5px',
+                            }}
+                          >
+                            ACCEPTED
                           </span>
                         )}
                       </div>

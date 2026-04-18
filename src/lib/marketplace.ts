@@ -71,6 +71,12 @@ export interface SponsoredAd {
 
 export interface MarketplaceBid {
   id: string;
+  serviceRequestId: string;
+  requestTitle: string;
+  requestBudget: string;
+  requesterName: string;
+  requesterProfileId?: string | null;
+  category: string;
   providerProfileId?: string | null;
   adId?: string | null;
   name: string;
@@ -83,6 +89,8 @@ export interface MarketplaceBid {
   eta: string;
   time: string;
   location: string;
+  status: 'Submitted' | 'Accepted';
+  updatedAt: string;
 }
 
 export interface AdDraft {
@@ -104,6 +112,19 @@ export interface RequestDraft {
   budgetMax: number;
   location: string;
   urgency: string;
+}
+
+export interface BidDraft {
+  serviceRequestId: string;
+  amount: number;
+  eta: string;
+  message: string;
+}
+
+export interface BidUpdateDraft {
+  amount: number;
+  eta: string;
+  message: string;
 }
 
 export interface CustomerRequest {
@@ -158,6 +179,7 @@ export interface MarketplaceState {
   customerThreads: MarketplaceThread[];
   providerThreads: MarketplaceThread[];
   browseRequests: BrowseRequest[];
+  requestBids: MarketplaceBid[];
   sponsoredAds: SponsoredAd[];
   customerRequests: CustomerRequest[];
   providerLeads: ProviderLead[];
@@ -321,7 +343,7 @@ const INITIAL_STATE: MarketplaceState = {
       budget: 'NGN 8k - NGN 15k',
       loc: 'Gwarinpa',
       when: 'Today',
-      bids: 5,
+      bids: 1,
       ago: '28m',
       requester: 'Tolu Adesina',
       requesterProfileId: 'fallback-customer-tolu',
@@ -335,7 +357,7 @@ const INITIAL_STATE: MarketplaceState = {
       budget: 'NGN 20k - NGN 35k',
       loc: 'Maitama',
       when: 'Weekend',
-      bids: 7,
+      bids: 1,
       ago: '1h',
       requester: 'Ngozi Okafor',
       requesterProfileId: 'fallback-customer-ngozi',
@@ -354,6 +376,163 @@ const INITIAL_STATE: MarketplaceState = {
       requester: 'David Ogunleye',
       requesterProfileId: 'fallback-customer-david',
       summary: 'Battery bank drops fast and the inverter cuts out under load.',
+    },
+  ],
+  requestBids: [
+    {
+      id: 'bid-generator-amaka',
+      serviceRequestId: 'request-generator',
+      requestTitle: 'Generator not starting',
+      requestBudget: 'NGN 15k - NGN 25k',
+      requesterName: 'Aisha Bello',
+      requesterProfileId: 'fallback-customer-aisha',
+      category: 'Generator',
+      providerProfileId: 'fallback-provider-amaka',
+      name: 'Amaka Eze',
+      rating: 4.9,
+      jobs: 78,
+      price: 18000,
+      avatar: 'AE',
+      verified: true,
+      msg: 'I can diagnose the ignition and bring replacement plugs if needed.',
+      eta: 'Today 3:30 PM',
+      time: '12m',
+      location: 'Games Village',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-generator-chidi',
+      serviceRequestId: 'request-generator',
+      requestTitle: 'Generator not starting',
+      requestBudget: 'NGN 15k - NGN 25k',
+      requesterName: 'Aisha Bello',
+      requesterProfileId: 'fallback-customer-aisha',
+      category: 'Generator',
+      providerProfileId: 'fallback-provider-chidi',
+      adId: 'ad-1',
+      name: 'Sparkline Power',
+      rating: 4.9,
+      jobs: 234,
+      price: 22000,
+      avatar: 'SP',
+      verified: true,
+      msg: 'Full diagnostics, fuel system check, and same-day repair if parts are available.',
+      eta: 'Today 4 PM',
+      time: '19m',
+      location: 'Abuja',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-generator-musa',
+      serviceRequestId: 'request-generator',
+      requestTitle: 'Generator not starting',
+      requestBudget: 'NGN 15k - NGN 25k',
+      requesterName: 'Aisha Bello',
+      requesterProfileId: 'fallback-customer-aisha',
+      category: 'Generator',
+      providerProfileId: 'fallback-provider-musa',
+      name: 'Musa Repairs',
+      rating: 4.7,
+      jobs: 56,
+      price: 15000,
+      avatar: 'MR',
+      verified: true,
+      msg: 'Quick visit for starter and carburetor checks. I can be there first.',
+      eta: 'Today 2 PM',
+      time: '7m',
+      location: 'Wuse',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-plumbing-tunde',
+      serviceRequestId: 'request-plumbing',
+      requestTitle: 'Kitchen sink leaking badly',
+      requestBudget: 'NGN 8k - NGN 15k',
+      requesterName: 'Tolu Adesina',
+      requesterProfileId: 'fallback-customer-tolu',
+      category: 'Plumbing',
+      providerProfileId: 'fallback-provider-tunde',
+      name: 'Tunde Plumbing',
+      rating: 4.8,
+      jobs: 112,
+      price: 12000,
+      avatar: 'TP',
+      verified: true,
+      msg: 'I can replace the faulty trap, seal the leak, and test pressure before I leave.',
+      eta: 'Today 5 PM',
+      time: '24m',
+      location: 'Gwarinpa',
+      status: 'Accepted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-cleaning-sparkle',
+      serviceRequestId: 'request-cleaning',
+      requestTitle: 'Deep clean 3BR flat',
+      requestBudget: 'NGN 20k - NGN 35k',
+      requesterName: 'Ngozi Okafor',
+      requesterProfileId: 'fallback-customer-ngozi',
+      category: 'Cleaning',
+      providerProfileId: 'fallback-provider-sparkle',
+      name: 'Sparkle Crew',
+      rating: 4.8,
+      jobs: 148,
+      price: 32000,
+      avatar: 'SC',
+      verified: true,
+      msg: 'Move-in deep clean with bathrooms, kitchen degreasing, and floor polish included.',
+      eta: 'Saturday 9 AM',
+      time: '1h',
+      location: 'Maitama',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-solar-kingsley',
+      serviceRequestId: 'request-solar',
+      requestTitle: 'Solar inverter inspection',
+      requestBudget: 'NGN 30k - NGN 45k',
+      requesterName: 'David Ogunleye',
+      requesterProfileId: 'fallback-customer-david',
+      category: 'Solar and inverter',
+      providerProfileId: 'fallback-provider-kingsley',
+      name: 'Kingsley Solar',
+      rating: 4.9,
+      jobs: 93,
+      price: 35000,
+      avatar: 'KS',
+      verified: true,
+      msg: 'Battery bank and inverter load testing with a same-day written report.',
+      eta: 'Today 6 PM',
+      time: '18m',
+      location: 'Wuse II',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'bid-solar-lumen',
+      serviceRequestId: 'request-solar',
+      requestTitle: 'Solar inverter inspection',
+      requestBudget: 'NGN 30k - NGN 45k',
+      requesterName: 'David Ogunleye',
+      requesterProfileId: 'fallback-customer-david',
+      category: 'Solar and inverter',
+      providerProfileId: 'fallback-provider-lumen',
+      name: 'Lumen Grid',
+      rating: 4.7,
+      jobs: 64,
+      price: 30000,
+      avatar: 'LG',
+      verified: true,
+      msg: 'I can inspect the inverter, battery bank, and charging profile this afternoon.',
+      eta: 'Today 4:30 PM',
+      time: '32m',
+      location: 'Wuse II',
+      status: 'Submitted',
+      updatedAt: new Date().toISOString(),
     },
   ],
   sponsoredAds: [
@@ -426,7 +605,7 @@ const INITIAL_STATE: MarketplaceState = {
       title: 'Deep clean for 3BR flat',
       location: 'Maitama',
       budget: 'NGN 20k - NGN 35k',
-      bids: 7,
+      bids: 1,
       status: 'Provider booked',
       provider: 'Sparkle Crew arriving Saturday 9 AM',
     },
@@ -435,7 +614,7 @@ const INITIAL_STATE: MarketplaceState = {
       title: 'Kitchen sink leaking badly',
       location: 'Gwarinpa',
       budget: 'NGN 8k - NGN 15k',
-      bids: 5,
+      bids: 1,
       status: 'Escrow active',
       provider: 'Tunde Plumbing has started work',
     },
@@ -554,13 +733,36 @@ function cloneInitialState() {
   return JSON.parse(JSON.stringify(INITIAL_STATE)) as MarketplaceState;
 }
 
+function normalizeMarketplaceState(state: Partial<MarketplaceState>): MarketplaceState {
+  const initial = cloneInitialState();
+
+  return {
+    ...initial,
+    ...state,
+    viewer: state.viewer ?? initial.viewer,
+    customerThreads: state.customerThreads ?? initial.customerThreads,
+    providerThreads: state.providerThreads ?? initial.providerThreads,
+    browseRequests: state.browseRequests ?? initial.browseRequests,
+    requestBids: state.requestBids ?? initial.requestBids,
+    sponsoredAds: state.sponsoredAds ?? initial.sponsoredAds,
+    customerRequests: state.customerRequests ?? initial.customerRequests,
+    providerLeads: state.providerLeads ?? initial.providerLeads,
+    customerEscrows: state.customerEscrows ?? initial.customerEscrows,
+    providerBalance: {
+      ...initial.providerBalance,
+      ...(state.providerBalance ?? {}),
+    },
+    providerPayouts: state.providerPayouts ?? initial.providerPayouts,
+  };
+}
+
 function safeParse(value: string | null): MarketplaceState | null {
   if (!value) {
     return null;
   }
 
   try {
-    return JSON.parse(value) as MarketplaceState;
+    return normalizeMarketplaceState(JSON.parse(value) as Partial<MarketplaceState>);
   } catch {
     return null;
   }
@@ -686,40 +888,25 @@ function extractNumericPrice(value: string) {
 
 export function buildMarketplaceBids(
   request: BrowseRequest | null,
-  ads: SponsoredAd[],
+  bids: MarketplaceBid[],
 ): MarketplaceBid[] {
-  const activeAds = ads.filter((ad) => ad.active);
-
-  if (activeAds.length === 0) {
+  if (!request) {
     return [];
   }
 
-  const requestText = normalizeServiceLabel(
-    `${request?.categoryName || ''} ${request?.title || ''} ${request?.summary || ''}`,
-  );
+  return bids
+    .filter((bid) => bid.serviceRequestId === request.id)
+    .sort((left, right) => {
+      if (left.status !== right.status) {
+        return left.status === 'Accepted' ? -1 : 1;
+      }
 
-  const matchingAds =
-    requestText.length > 0
-      ? activeAds.filter((ad) => requestText.includes(normalizeServiceLabel(ad.service)))
-      : activeAds;
+      if (left.price !== right.price) {
+        return left.price - right.price;
+      }
 
-  const sourceAds = matchingAds.length > 0 ? matchingAds : activeAds;
-
-  return sourceAds.slice(0, 6).map((ad, index) => ({
-    id: `bid-${ad.id}`,
-    providerProfileId: ad.providerProfileId,
-    adId: ad.id,
-    name: ad.providerName,
-    rating: ad.rating,
-    jobs: ad.jobs,
-    price: extractNumericPrice(ad.startingPrice),
-    avatar: getInitials(ad.providerName),
-    verified: ad.verified,
-    msg: ad.body,
-    eta: ['Today 2 PM', 'Today 3:30 PM', 'Tomorrow 9 AM'][index % 3],
-    time: ['~2 hrs', '~3 hrs', '~1 hr'][index % 3],
-    location: ad.location,
-  }));
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
 }
 
 function buildViewerState(user?: {
@@ -885,6 +1072,31 @@ function updateThreadList(
   });
 }
 
+function updateRequestBidCounts(
+  state: MarketplaceState,
+  serviceRequestId: string,
+  bidCount: number,
+) {
+  return {
+    ...state,
+    browseRequests: state.browseRequests.map((request) =>
+      request.id === serviceRequestId ? { ...request, bids: bidCount } : request,
+    ),
+    customerRequests: state.customerRequests.map((request) =>
+      request.id === serviceRequestId
+        ? {
+            ...request,
+            bids: bidCount,
+            provider:
+              bidCount > 0
+                ? `${bidCount} provider${bidCount === 1 ? '' : 's'} submitted real bids`
+                : 'Waiting for provider bids',
+          }
+        : request,
+    ),
+  };
+}
+
 export function sendFallbackMessage(
   state: MarketplaceState,
   viewer: ProfileSummary | null,
@@ -1043,6 +1255,105 @@ export function createFallbackRequest(
   };
 }
 
+export function createFallbackBid(
+  state: MarketplaceState,
+  viewer: ProfileSummary | null,
+  draft: BidDraft,
+) {
+  if (!viewer) {
+    return { state, bidId: null as string | null };
+  }
+
+  const request = state.browseRequests.find((item) => item.id === draft.serviceRequestId);
+
+  if (!request) {
+    return { state, bidId: null as string | null };
+  }
+
+  const existing = state.requestBids.find(
+    (bid) => bid.serviceRequestId === draft.serviceRequestId && bid.providerProfileId === viewer.id,
+  );
+  const updatedAt = nowDate().toISOString();
+  const nextBid: MarketplaceBid = {
+    id: existing?.id || `bid-${Date.now()}`,
+    serviceRequestId: request.id,
+    requestTitle: request.title,
+    requestBudget: request.budget,
+    requesterName: request.requester,
+    requesterProfileId: request.requesterProfileId,
+    category: request.categoryName,
+    providerProfileId: viewer.id,
+    adId: existing?.adId || null,
+    name: viewer.name,
+    rating: viewer.rating,
+    jobs: viewer.completedJobs,
+    price: draft.amount,
+    avatar: getInitials(viewer.name),
+    verified: viewer.verified,
+    msg: draft.message,
+    eta: draft.eta,
+    time: formatRelativeTime(updatedAt),
+    location: request.loc,
+    status: existing?.status || 'Submitted',
+    updatedAt,
+  };
+
+  const nextBids = existing
+    ? state.requestBids.map((bid) => (bid.id === existing.id ? nextBid : bid))
+    : [nextBid, ...state.requestBids];
+  const bidCount = nextBids.filter((bid) => bid.serviceRequestId === request.id).length;
+
+  return {
+    bidId: nextBid.id,
+    state: updateRequestBidCounts(
+      {
+        ...state,
+        requestBids: nextBids,
+      },
+      request.id,
+      bidCount,
+    ),
+  };
+}
+
+export function updateFallbackBid(
+  state: MarketplaceState,
+  viewer: ProfileSummary | null,
+  bidId: string,
+  draft: BidUpdateDraft,
+) {
+  if (!viewer) {
+    return { state, bidId: null as string | null };
+  }
+
+  const existing = state.requestBids.find(
+    (bid) => bid.id === bidId && bid.providerProfileId === viewer.id,
+  );
+
+  if (!existing) {
+    return { state, bidId: null as string | null };
+  }
+
+  const updatedAt = nowDate().toISOString();
+  const nextBid: MarketplaceBid = {
+    ...existing,
+    price: draft.amount,
+    eta: draft.eta,
+    msg: draft.message,
+    time: formatRelativeTime(updatedAt),
+    updatedAt,
+  };
+  const nextState = {
+    ...state,
+    requestBids: state.requestBids.map((bid) => (bid.id === bidId ? nextBid : bid)),
+  };
+
+  return {
+    bidId,
+    state: nextState,
+  };
+}
+
 export function createFallbackAd(
   state: MarketplaceState,
   viewer: ProfileSummary | null,
@@ -1126,6 +1437,7 @@ export function emptyMarketplaceState(): MarketplaceState {
     customerThreads: [] as MarketplaceThread[],
     providerThreads: [] as MarketplaceThread[],
     browseRequests: [] as BrowseRequest[],
+    requestBids: [] as MarketplaceBid[],
     sponsoredAds: [] as SponsoredAd[],
     customerRequests: [] as CustomerRequest[],
     providerLeads: [] as ProviderLead[],

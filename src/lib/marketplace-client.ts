@@ -2,16 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Session } from 'next-auth';
 import {
   createFallbackAd,
+  createFallbackBid,
   createFallbackRequest,
   emptyMarketplaceState,
   isSupabaseEnabled,
   markFallbackThreadRead,
   sendFallbackMessage,
   toggleFallbackAd,
+  updateFallbackBid,
   updateFallbackRole,
   useMarketplaceFallbackState,
   type AdDraft,
   type AppRole,
+  type BidDraft,
+  type BidUpdateDraft,
+  type MarketplaceBid,
   type MarketplaceState,
   type RequestDraft,
   type SendMessageInput,
@@ -211,6 +216,60 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
     [fallbackState, mutate, refresh, setFallbackState],
   );
 
+  const createBid = useCallback(
+    async (draft: BidDraft) =>
+      mutate(
+        async () => {
+          const payload = await requestJson<{ bid: MarketplaceBid | null }>(
+            '/api/marketplace/bids',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(draft),
+            },
+          );
+          await refresh();
+          return payload.bid;
+        },
+        () => {
+          const result = createFallbackBid(fallbackState, fallbackState.viewer, draft);
+          setFallbackState(result.state);
+          setState(result.state);
+          return result.state.requestBids.find((bid) => bid.id === result.bidId) || null;
+        },
+      ),
+    [fallbackState, mutate, refresh, setFallbackState],
+  );
+
+  const updateBid = useCallback(
+    async (bidId: string, draft: BidUpdateDraft) =>
+      mutate(
+        async () => {
+          const payload = await requestJson<{ bid: MarketplaceBid | null }>(
+            `/api/marketplace/bids/${encodeURIComponent(bidId)}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(draft),
+            },
+          );
+          await refresh();
+          return payload.bid;
+        },
+        () => {
+          const result = updateFallbackBid(fallbackState, fallbackState.viewer, bidId, draft);
+          setFallbackState(result.state);
+          setState(result.state);
+          return result.state.requestBids.find((bid) => bid.id === result.bidId) || null;
+        },
+      ),
+    [fallbackState, mutate, refresh, setFallbackState],
+  );
+
   const toggleAd = useCallback(
     async (adId: string) =>
       mutate(
@@ -266,6 +325,8 @@ export function useMarketplace(user: Session['user'] | null | undefined) {
     sendMessage,
     markThreadRead,
     createAd,
+    createBid,
+    updateBid,
     toggleAd,
     setRolePreference,
   };

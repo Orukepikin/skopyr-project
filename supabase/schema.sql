@@ -34,6 +34,22 @@ create table if not exists service_requests (
 create index if not exists service_requests_customer_idx on service_requests(customer_profile_id);
 create index if not exists service_requests_created_idx on service_requests(created_at desc);
 
+create table if not exists provider_bids (
+  id uuid primary key default gen_random_uuid(),
+  service_request_id uuid not null references service_requests(id) on delete cascade,
+  provider_profile_id uuid not null references profiles(id) on delete cascade,
+  amount_kobo bigint not null,
+  eta_label text not null,
+  message text not null,
+  status text not null default 'Submitted' check (status in ('Submitted', 'Accepted')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(service_request_id, provider_profile_id)
+);
+
+create index if not exists provider_bids_request_idx on provider_bids(service_request_id, updated_at desc);
+create index if not exists provider_bids_provider_idx on provider_bids(provider_profile_id, updated_at desc);
+
 create table if not exists sponsored_ads (
   id uuid primary key default gen_random_uuid(),
   provider_profile_id uuid not null references profiles(id) on delete cascade,

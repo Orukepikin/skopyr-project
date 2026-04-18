@@ -1,21 +1,106 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { colors, fonts, categories } from '@/lib/constants';
-import type { BrowseRequest } from '@/lib/marketplace';
+import {
+  formatNaira,
+  type BidUpdateDraft,
+  type BrowseRequest,
+  type MarketplaceBid,
+} from '@/lib/marketplace';
 import Button from './Button';
 
 interface Props {
   onBack: () => void;
   requests: BrowseRequest[];
+  providerBidMap: Record<string, MarketplaceBid>;
   onMessageRequester: (request: BrowseRequest) => void;
+  onSubmitBid: (request: BrowseRequest, draft: BidUpdateDraft) => void | Promise<void>;
 }
 
-export default function BrowseJobs({ onBack, requests, onMessageRequester }: Props) {
+const DEFAULT_BID_DRAFT: BidUpdateDraft = {
+  amount: 18000,
+  eta: 'Today 4 PM',
+  message: 'I can handle this request and keep you updated from arrival to completion.',
+};
+
+function suggestBidAmount(budget: string) {
+  const match = budget.match(/NGN\s*([0-9]+)\s*k/i);
+
+  if (!match) {
+    return DEFAULT_BID_DRAFT.amount;
+  }
+
+  return Number.parseInt(match[1], 10) * 1000;
+}
+
+export default function BrowseJobs({
+  onBack,
+  requests,
+  providerBidMap,
+  onMessageRequester,
+  onSubmitBid,
+}: Props) {
   const [visible, setVisible] = useState(false);
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
+  const [bidDraft, setBidDraft] = useState<BidUpdateDraft>(DEFAULT_BID_DRAFT);
+  const [savingBid, setSavingBid] = useState(false);
+  const [bidError, setBidError] = useState<string | null>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setVisible(true), 50);
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  const activeRequest = useMemo(
+    () => requests.find((request) => request.id === editingRequestId) ?? null,
+    [editingRequestId, requests],
+  );
+
+  const openBidModal = (request: BrowseRequest) => {
+    const existingBid = providerBidMap[request.id];
+    const suggestedAmount = existingBid?.price || suggestBidAmount(request.budget);
+
+    setBidDraft({
+      amount: suggestedAmount,
+      eta: existingBid?.eta || 'Today 4 PM',
+      message:
+        existingBid?.msg ||
+        `Hi ${request.requester.split(' ')[0]}, I can help with "${request.title}" and I can start ${request.when.toLowerCase()}.`,
+    });
+    setBidError(null);
+    setEditingRequestId(request.id);
+  };
+
+  const closeBidModal = () => {
+    setEditingRequestId(null);
+    setBidError(null);
+    setSavingBid(false);
+  };
+
+  const handleSubmitBid = async () => {
+    if (!activeRequest || !Number.isFinite(bidDraft.amount) || bidDraft.amount <= 0) {
+      setBidError('Add a valid bid amount before sending your quote.');
+      return;
+    }
+
+    if (!bidDraft.eta.trim() || !bidDraft.message.trim()) {
+      setBidError('Add your arrival time and a short note before sending the bid.');
+      return;
+    }
+
+    try {
+      setSavingBid(true);
+      setBidError(null);
+      await onSubmitBid(activeRequest, {
+        amount: Math.round(bidDraft.amount),
+        eta: bidDraft.eta.trim(),
+        message: bidDraft.message.trim(),
+      });
+      closeBidModal();
+    } catch (error) {
+      setBidError(error instanceof Error ? error.message : 'Unable to save your bid right now.');
+      setSavingBid(false);
+    }
+  };
 
   return (
     <div
@@ -75,12 +160,13 @@ export default function BrowseJobs({ onBack, requests, onMessageRequester }: Pro
             margin: '0 0 28px',
           }}
         >
-          Message requesters directly, build trust early, and win the job faster.
+          Message requesters directly, send a real quote, and come back later to edit the same bid.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {requests.map((request, index) => {
             const category = categories.find((item) => item.id === request.cat);
+            const existingBid = providerBidMap[request.id];
 
             return (
               <div
@@ -117,7 +203,7 @@ export default function BrowseJobs({ onBack, requests, onMessageRequester }: Pro
                         flexShrink: 0,
                       }}
                     >
-                      {category?.icon || '•'}
+                      {category?.icon || '\u2022'}
                     </div>
                     <div>
                       <div
@@ -167,10 +253,33 @@ export default function BrowseJobs({ onBack, requests, onMessageRequester }: Pro
                       >
                         Requester: {request.requester}
                       </div>
+
+                      {existingBid && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            background: colors.accentDim,
+                            border: `1px solid ${colors.accentBorder}`,
+                            borderRadius: 999,
+                            padding: '8px 12px',
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            color: colors.text1,
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>{existingBid.status}</span>
+                          <span>{formatNaira(existingBid.price)}</span>
+                          <span>{existingBid.eta}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div style={{ minWidth: 170, textAlign: 'right' }}>
+                  <div style={{ minWidth: 210, textAlign: 'right' }}>
                     <div style={{ fontSize: 11, fontFamily: fonts.body, color: colors.text3 }}>
                       {request.ago} ago
                     </div>
@@ -184,11 +293,22 @@ export default function BrowseJobs({ onBack, requests, onMessageRequester }: Pro
                       }}
                     >
                       {request.bids} bid{request.bids !== 1 && 's'}
-                      {request.bids < 3 && ' · Low competition'}
+                      {request.bids < 3 && ' \u00b7 Low competition'}
                     </div>
-                    <div style={{ marginTop: 14 }}>
-                      <Button size="sm" onClick={() => onMessageRequester(request)}>
+                    <div
+                      style={{
+                        marginTop: 14,
+                        display: 'flex',
+                        gap: 8,
+                        justifyContent: 'flex-end',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Button size="sm" variant="ghost" onClick={() => onMessageRequester(request)}>
                         Message requester
+                      </Button>
+                      <Button size="sm" onClick={() => openBidModal(request)}>
+                        {existingBid ? 'Edit your bid' : 'Send bid'}
                       </Button>
                     </div>
                   </div>
@@ -198,6 +318,214 @@ export default function BrowseJobs({ onBack, requests, onMessageRequester }: Pro
           })}
         </div>
       </div>
+
+      {activeRequest && (
+        <div
+          onClick={closeBidModal}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 120,
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 560,
+              background: '#141418',
+              border: `1px solid ${colors.border}`,
+              borderRadius: 22,
+              padding: 28,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: fonts.body,
+                    fontWeight: 700,
+                    color: colors.accent,
+                    letterSpacing: 1.6,
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}
+                >
+                  {providerBidMap[activeRequest.id] ? 'Edit provider bid' : 'Create provider bid'}
+                </div>
+                <div style={{ fontSize: 24, fontFamily: fonts.display, fontWeight: 700, color: colors.text1 }}>
+                  {activeRequest.title}
+                </div>
+                <div style={{ fontSize: 13, fontFamily: fonts.body, color: colors.text3, marginTop: 8 }}>
+                  {activeRequest.requester} | {activeRequest.loc} | {activeRequest.budget}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeBidModal}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 999,
+                  color: colors.text2,
+                  fontFamily: fonts.body,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  height: 'fit-content',
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ marginTop: 20, display: 'grid', gap: 14 }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: fonts.body,
+                    fontWeight: 700,
+                    color: colors.text3,
+                    letterSpacing: 1.6,
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}
+                >
+                  Your price
+                </div>
+                <input
+                  type="number"
+                  min={1000}
+                  step={500}
+                  value={bidDraft.amount}
+                  onChange={(event) =>
+                    setBidDraft((current) => ({
+                      ...current,
+                      amount: Number.parseInt(event.target.value || '0', 10),
+                    }))
+                  }
+                  style={{
+                    width: '100%',
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    color: colors.text1,
+                    fontSize: 14,
+                    fontFamily: fonts.body,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: fonts.body,
+                    fontWeight: 700,
+                    color: colors.text3,
+                    letterSpacing: 1.6,
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}
+                >
+                  Arrival time
+                </div>
+                <input
+                  value={bidDraft.eta}
+                  onChange={(event) =>
+                    setBidDraft((current) => ({ ...current, eta: event.target.value }))
+                  }
+                  style={{
+                    width: '100%',
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    color: colors.text1,
+                    fontSize: 14,
+                    fontFamily: fonts.body,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: fonts.body,
+                    fontWeight: 700,
+                    color: colors.text3,
+                    letterSpacing: 1.6,
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}
+                >
+                  What the buyer should know
+                </div>
+                <textarea
+                  value={bidDraft.message}
+                  onChange={(event) =>
+                    setBidDraft((current) => ({ ...current, message: event.target.value }))
+                  }
+                  style={{
+                    width: '100%',
+                    minHeight: 120,
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    color: colors.text1,
+                    fontSize: 14,
+                    fontFamily: fonts.body,
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            {bidError && (
+              <div
+                style={{
+                  marginTop: 14,
+                  fontSize: 12,
+                  fontFamily: fonts.body,
+                  color: '#FCA5A5',
+                  lineHeight: 1.6,
+                }}
+              >
+                {bidError}
+              </div>
+            )}
+
+            <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12, fontFamily: fonts.body, color: colors.text3, lineHeight: 1.6, maxWidth: 320 }}>
+                This bid becomes a real record the buyer can compare, message against, accept, and fund through escrow.
+              </div>
+              <Button onClick={() => void handleSubmitBid()} disabled={savingBid}>
+                {savingBid
+                  ? 'Saving bid...'
+                  : providerBidMap[activeRequest.id]
+                    ? 'Save bid changes'
+                    : 'Send provider bid'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         @keyframes fadeUp {
